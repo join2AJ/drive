@@ -139,7 +139,7 @@ export default function Settings({ pop }) {
           <div className="glyph"><Server size={18} /></div>
           <div className="grow"><div className="title">Connect real tracker</div><div className="meta">Vendor cloud API, Traccar or MQTT</div></div>
         </button>
-        <button className="list-item" onClick={() => { localStorage.clear(); location.reload(); }}>
+        <button className="list-item" onClick={() => { try { localStorage.clear(); } catch { /* storage unavailable */ } location.reload(); }}>
           <div className="glyph"><RotateCcw size={18} /></div>
           <div className="grow"><div className="title">Reset demo</div></div>
         </button>

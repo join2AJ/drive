@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Navigation, Route as RouteIcon, BarChart3, Film, Bell } from 'lucide-react';
 import { AppProvider, useApp } from './state.jsx';
 import Live from './screens/Live.jsx';
@@ -26,12 +26,21 @@ function Shell() {
   const [tab, setTab] = useState('live');
   const [stack, setStack] = useState([]);
 
-  // Pushed screens participate in browser / Android hardware back.
+  // Pushed screens participate in browser / Android hardware back. Some embedded
+  // WebViews and sandboxed frames refuse the History API, so fall back to local state.
+  const usesHistory = useRef(true);
   const push = useCallback((screen, params = {}) => {
     setStack((s) => [...s, { screen, params, key: Date.now() }]);
-    history.pushState({ depth: 1 }, '');
+    try {
+      history.pushState({ depth: 1 }, '');
+    } catch {
+      usesHistory.current = false;
+    }
   }, []);
-  const pop = useCallback(() => history.back(), []);
+  const pop = useCallback(() => {
+    if (usesHistory.current) history.back();
+    else setStack((s) => s.slice(0, -1));
+  }, []);
   useEffect(() => {
     const onPop = () => setStack((s) => s.slice(0, -1));
     addEventListener('popstate', onPop);
