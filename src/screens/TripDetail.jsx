@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Pause, Share2, Video, Mic, ChevronRight } from 'lucide-react';
+import { Play, Pause, Share2, Video, Mic, ChevronRight, FilePlus2 } from 'lucide-react';
 import { useApp } from '../state.jsx';
 import MapView, { Route, Vehicle, Pin, boundsOf } from '../components/MapView.jsx';
 import { SpeedChart, ScoreRing } from '../components/Charts.jsx';
 import { NavBar, EVENT_META, EventGlyph, SectionTitle, PlaceIcon } from '../components/ui.jsx';
-import { fmtDay, fmtDuration, fmtKm, fmtTime, fmtClock } from '../lib/format.js';
+import { fmtDay, fmtDuration, fmtTime, fmtClock } from '../lib/format.js';
+import { fmtINR, tripCost } from '../lib/costs.js';
 
 export function eventLine(e) {
   switch (e.type) {
@@ -21,7 +22,7 @@ export function eventLine(e) {
 }
 
 export default function TripDetail({ id, pop, push }) {
-  const { tripById, thresholds, placeNameAt, placeAt, media, setToast } = useApp();
+  const { tripById, thresholds, placeNameAt, placeAt, media, setToast, settings } = useApp();
   const trip = tripById[id];
   const [hover, setHover] = useState(null);
   const [replay, setReplay] = useState(null); // index while replaying
@@ -95,7 +96,7 @@ export default function TripDetail({ id, pop, push }) {
           ['Distance', (s.distance / 1000).toFixed(1), 'km'],
           ['Duration', Math.round(s.duration / 60), 'min'],
           ['Avg', Math.round(s.avgV), 'km/h'],
-          ['Top', Math.round(s.maxV), 'km/h'],
+          ['Fuel', fmtINR(tripCost(s, settings.fuel).cost), `${tripCost(s, settings.fuel).litres.toFixed(2)} L`],
         ].map(([l, v, u]) => (
           <div key={l} className="stat" style={{ padding: 10 }}>
             <div className="label" style={{ fontSize: 11 }}>{l}</div>
@@ -109,7 +110,7 @@ export default function TripDetail({ id, pop, push }) {
         <div className="row" style={{ marginBottom: 6 }}>
           <div className="grow">
             <div className="card-title" style={{ margin: 0 }}>Speed</div>
-            <div className="muted" style={{ fontSize: 12 }}>Idle {fmtDuration(s.idle)} · drag to scrub</div>
+            <div className="muted" style={{ fontSize: 12 }}>Top {Math.round(s.maxV)} km/h · idle {fmtDuration(s.idle)} · drag to scrub</div>
           </div>
           <ScoreRing value={trip.score} size={44} stroke={4} />
         </div>
@@ -156,6 +157,9 @@ export default function TripDetail({ id, pop, push }) {
           </div>
         </>
       )}
+      <button className="btn" style={{ marginTop: 20, color: 'var(--critical-ink)' }} onClick={() => push('newIncident', { tripId: trip.id })}>
+        <FilePlus2 size={18} /> Log an incident on this trip
+      </button>
     </div>
   );
 }

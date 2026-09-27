@@ -5,6 +5,7 @@ import { boundsOf, pathD } from '../components/MapView.jsx';
 import { ScoreRing } from '../components/Charts.jsx';
 import { EVENT_META } from '../components/ui.jsx';
 import { fmtDay, fmtDuration, fmtKm, fmtTime } from '../lib/format.js';
+import { fmtINR, tripCost } from '../lib/costs.js';
 
 export const TripThumb = memo(function TripThumb({ samples, size = 76, crash }) {
   const b = boundsOf(samples);
@@ -57,6 +58,7 @@ export default function Trips({ push }) {
     return [...f].reverse();
   }, [trips, filter, placeNameAt]);
 
+  const { settings } = useApp();
   const week = useMemo(() => {
     const since = Date.now() - 7 * 86_400_000;
     const w = trips.filter((t) => t.start >= since);
@@ -64,9 +66,9 @@ export default function Trips({ push }) {
       n: w.length,
       d: w.reduce((a, t) => a + t.summary.distance, 0),
       dur: w.reduce((a, t) => a + t.summary.duration, 0),
-      score: Math.round(w.reduce((a, t) => a + t.score, 0) / (w.length || 1)),
+      cost: w.reduce((a, t) => a + tripCost(t.summary, settings.fuel).cost, 0),
     };
-  }, [trips]);
+  }, [trips, settings.fuel]);
 
   const groups = [];
   for (const t of list.slice(0, limit)) {
@@ -86,7 +88,7 @@ export default function Trips({ push }) {
           ['Trips', week.n],
           ['Distance', fmtKm(week.d, 0)],
           ['Driving', fmtDuration(week.dur)],
-          ['Avg score', week.score],
+          ['Fuel', fmtINR(week.cost)],
         ].map(([l, v]) => (
           <div key={l}>
             <div className="num" style={{ fontWeight: 700, fontSize: 17 }}>{v}</div>
@@ -119,7 +121,7 @@ export default function Trips({ push }) {
 }
 
 export function TripRow({ trip, onClick }) {
-  const { placeNameAt } = useApp();
+  const { placeNameAt, settings } = useApp();
   const from = placeNameAt(trip.samples[0]) ?? 'Unknown';
   const to = placeNameAt(trip.samples[trip.samples.length - 1]) ?? 'Roadside';
   const crash = trip.events.some((e) => e.type === 'crash');
@@ -138,7 +140,7 @@ export function TripRow({ trip, onClick }) {
           <ScoreRing value={trip.score} size={32} stroke={3} />
         </div>
         <div className="trip-meta num">
-          {fmtTime(trip.start)} – {fmtTime(trip.end)} · {fmtKm(trip.summary.distance)} · {fmtDuration(trip.summary.duration)}
+          {fmtTime(trip.start)} – {fmtTime(trip.end)} · {fmtKm(trip.summary.distance)} · {fmtDuration(trip.summary.duration)} · {fmtINR(tripCost(trip.summary, settings.fuel).cost)}
         </div>
         <div className="trip-foot">
           {Object.entries(counts).map(([type, n]) => {

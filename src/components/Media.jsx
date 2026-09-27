@@ -4,6 +4,15 @@ import { mulberry32 } from '../lib/rng.js';
 import { fmtClock } from '../lib/format.js';
 import { formatLatLng } from '../lib/geo.js';
 
+/** Stable numeric seed from any media id. */
+export function seedOf(id) {
+  let h = 7;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h % 100000;
+}
+
+export const fmtLen = (sec) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+
 // Stylised dashcam / cabin-cam renderer. In the demo there's no real footage, so we render a
 // scene driven by the recorded telemetry (speed, time of day) — the HUD overlay is exactly
 // what a real player would draw on top of the tracker's MP4.
@@ -171,7 +180,7 @@ export function MediaPlayer({ media, trip, onShare }) {
     <div className="stack">
       {media.kind === 'video' ? (
         <div className="player" style={{ aspectRatio: '16 / 10' }}>
-          <DashcamScene ts={now} speed={s?.v ?? 0} odo={odo.current} camera={media.camera} seed={Number(media.id.slice(1))} shake={shake} />
+          <DashcamScene ts={now} speed={s?.v ?? 0} odo={odo.current} camera={media.camera} seed={seedOf(media.id)} shake={shake} />
           {nearEvent && media.eventType === 'crash' && <div style={{ position: 'absolute', inset: 0, background: '#fff', opacity: 0.35 }} />}
           <div className="hud">
             <div className="tl"><span className="rec">REC</span> {media.camera.toUpperCase()} CAM</div>
@@ -191,7 +200,7 @@ export function MediaPlayer({ media, trip, onShare }) {
               <div className="muted" style={{ fontSize: 13 }}>{fmtClock(now)} · {Math.round(s?.v ?? 0)} km/h</div>
             </div>
           </div>
-          <Waveform seed={Number(media.id.slice(1))} progress={pct} spikeAt={spikeAt} height={64} bars={64} />
+          <Waveform seed={seedOf(media.id)} progress={pct} spikeAt={spikeAt} height={64} bars={64} />
         </div>
       )}
 

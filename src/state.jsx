@@ -4,6 +4,8 @@ import {
   DEFAULT_THRESHOLDS, analyzeTrip, detectEvents, frequentPlaces, geofenceTransitions,
 } from './lib/analytics.js';
 import { places as allPlaces } from './data/cityModel.js';
+import { DEFAULT_FUEL } from './lib/costs.js';
+import { sha256, snapshotGps } from './lib/evidence.js';
 
 const Ctx = createContext(null);
 export const useApp = () => useContext(Ctx);
@@ -29,7 +31,30 @@ const DEFAULT_SETTINGS = {
   ],
   sosCountdown: 30,
   placeNames: {},
+  fuel: DEFAULT_FUEL,
+  // Remembered once, pre-filled into every claim.
+  claimProfile: { driverName: 'Arjun Kumar', phone: '+91 98450 67890', licenceNo: '', insurer: '', policyNo: '' },
 };
+
+const DEFAULT_CONTROLS = {
+  locked: true,
+  engine: 'on',
+  mirrors: 'open',
+  windows: 'closed',
+  trunk: 'closed',
+  lights: false,
+  hazard: false,
+  climate: false,
+  climateTemp: 22,
+  guard: true,
+  valet: false,
+  speedLimiter: false,
+  speedLimitKmh: 80,
+};
+
+// Evidence window kept around an incident: 15 min before, 5 min after.
+export const EVIDENCE_BEFORE = 15 * 60_000;
+export const EVIDENCE_AFTER = 5 * 60_000;
 
 export function AppProvider({ children }) {
   const [source] = useState(() => createDemoSource(Date.now()));
@@ -38,9 +63,17 @@ export function AppProvider({ children }) {
   const [fences, setFences] = useState(source.geofences);
   const [toast, setToast] = useState(null);
   const [immobilized, setImmobilized] = useState(false);
+  const [incidents, setIncidents] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('drive.incidents') ?? '[]'); } catch { return []; }
+  });
+  const [deletedMedia, setDeletedMedia] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('drive.media.deleted') ?? '[]'); } catch { return []; }
+  });
 
   useEffect(() => save('drive.thresholds', thresholds), [thresholds]);
   useEffect(() => save('drive.settings', settings), [settings]);
+  useEffect(() => save('drive.incidents', incidents), [incidents]);
+  useEffect(() => save('drive.media.deleted', deletedMedia), [deletedMedia]);
 
   // Theme
   useEffect(() => {
@@ -78,11 +111,89 @@ export function AppProvider({ children }) {
 
   // ---------------- Live vehicle ----------------
   const live = useLiveVehicle(source.live, thresholds);
+  const controls = useVehicleControls(live, immobilized, setImmobilized, setToast);
+
+  // ---------------- Media & incidents ----------------
+  // Evidence is append-only: anything inside an incident's window is locked and can't be deleted.
+  const media = useMemo(() => {
+    const extra = incidents.flatMap((inc) => inc.media ?? []);
+    const all = [...extra, ...source.media].filter((m) => !deletedMedia.includes(m.id));
+    return all
+      .map((m) => {
+        const inc = incidents.find((i) => i.media?.some((x) => x.id === m.id) || (m.t >= i.window[0] && m.t <= i.window[1]));
+        return inc ? { ...m, locked: true, incidentId: inc.id } : m;
+      })
+      .sort((a, b) => b.t - a.t);
+  }, [source.media, incidents, deletedMedia]);
+
+  const deleteMedia = useCallback((id) => {
+    const m = media.find((x) => x.id === id);
+    if (!m || m.locked) return false;
+    setDeletedMedia((d) => [...d, id]);
+    return true;
+  }, [media]);
+
+  const createIncident = useCallback(async ({ type, t, samples, tripId, source: src = 'user', autoKey, extraMedia = true }) => {
+    const window = [t - EVIDENCE_BEFORE, t + EVIDENCE_AFTER];
+    const gps = snapshotGps(samples, window[0], window[1]);
+    const at = gps.reduce((best, s) => (Math.abs(s.t - t) < Math.abs(best.t - t) ? s : best), gps[0] ?? { t, x: 0, y: 0, v: 0 });
+    const seq = String(incidents.length + 1).padStart(4, '0');
+    const id = `INC-${new Date(t).getFullYear()}-${seq}`;
+    const now = Date.now();
+    const newMedia = extraMedia
+      ? [
+          { id: `${id}-F`, kind: 'video', camera: 'Front', t: t - 30_000, duration: 60, eventType: 'incident', eventT: t, locked: true, sizeMB: 176 },
+          { id: `${id}-C`, kind: 'video', camera: 'Cabin', t: t - 30_000, duration: 60, eventType: 'incident', eventT: t, locked: true, sizeMB: 118 },
+          { id: `${id}-A`, kind: 'audio', camera: 'Cabin mic', t: t - 90_000, duration: 180, eventType: 'incident', eventT: t, locked: true, sizeMB: 2.8 },
+        ]
+      : [];
+    const gpsHash = await sha256(JSON.stringify(gps));
+    const inc = {
+      id,
+      autoKey,
+      type,
+      source: src,
+      t,
+      createdAt: now,
+      tripId,
+      window,
+      location: { x: at.x, y: at.y },
+      speedAt: at.v,
+      gps,
+      gpsHash,
+      media: newMedia,
+      photos: [],
+      details: {},
+      status: 'open',
+      log: [{ t: now, action: src === 'auto' ? 'Created automatically by collision detection' : 'Incident logged by driver' }, { t: now, action: `Evidence locked: ${gps.length} GPS points, ${newMedia.length} recordings` }],
+    };
+    setIncidents((list) => [inc, ...list]);
+    return inc;
+  }, [incidents.length]);
+
+  const updateIncident = useCallback((id, patch, action) => {
+    setIncidents((list) => list.map((i) => {
+      if (i.id !== id) return i;
+      const next = typeof patch === 'function' ? patch(i) : { ...i, ...patch };
+      return action ? { ...next, log: [...i.log, { t: Date.now(), action }] } : next;
+    }));
+  }, []);
+
+  // The auto-detected collision becomes a case the driver can complete for the insurer.
+  const crashAlert = alerts.find((a) => a.type === 'crash');
+  const autoCreated = useRef(false);
+  useEffect(() => {
+    if (!crashAlert || autoCreated.current || incidents.some((i) => i.autoKey === 'auto-crash')) return;
+    autoCreated.current = true;
+    const trip = trips.find((t) => t.id === crashAlert.tripId);
+    createIncident({ type: 'collision', t: crashAlert.t, samples: trip.samples, tripId: trip.id, source: 'auto', autoKey: 'auto-crash', extraMedia: false });
+  }, [crashAlert, incidents, trips, createIncident]);
 
   const value = {
-    source, vehicle: source.vehicle, trips, tripById, media: source.media, thresholds, setThresholds,
+    source, vehicle: source.vehicle, trips, tripById, thresholds, setThresholds,
     settings, setSettings, fences, setFences, frequent, alerts, placeNameAt, placeAt, savedPlaces,
-    live, toast, setToast, immobilized, setImmobilized,
+    live, toast, setToast, immobilized, setImmobilized, controls,
+    media, deleteMedia, incidents, createIncident, updateIncident,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -199,4 +310,37 @@ function useLiveVehicle(liveTrip, thresholds) {
     now: cur.t + offset.current,
     stopped: paused && !crash,
   };
+}
+
+/*
+ * Remote vehicle commands. Each command goes out over 4G/SMS to the tracker, which drives
+ * a relay or the car's CAN bus, then reports back. We simulate that round trip and enforce
+ * the same safety interlocks the firmware would.
+ */
+function useVehicleControls(live, immobilized, setImmobilized, setToast) {
+  const [state, setState] = useState(DEFAULT_CONTROLS);
+  const [pending, setPending] = useState({});
+  const [log, setLog] = useState([]);
+  const [parkedDemo, setParked] = useState(false);
+  const moving = !parkedDemo && live.cur.v > 3;
+  // While the demo car is driving the engine is obviously running; "parked" lets you try the rest.
+  const engine = parkedDemo ? state.engine : 'on';
+  const setParkedDemo = useCallback((on) => {
+    setParked(on);
+    setState((s) => ({ ...s, engine: on ? 'off' : 'on', locked: on ? true : s.locked }));
+  }, []);
+
+  const send = useCallback((key, label, apply, { latency = 1400 } = {}) => {
+    setPending((p) => ({ ...p, [key]: true }));
+    const sentAt = Date.now();
+    setTimeout(() => {
+      setState((s) => apply(s));
+      setPending((p) => ({ ...p, [key]: false }));
+      setLog((l) => [{ t: Date.now(), label, ms: Date.now() - sentAt, ok: true }, ...l].slice(0, 30));
+      if (navigator.vibrate) navigator.vibrate(30);
+      setToast(`${label} · confirmed by vehicle`);
+    }, latency + Math.random() * 700);
+  }, [setToast]);
+
+  return { state: { ...state, immobilized }, setState, pending, log, send, moving, engine, parkedDemo, setParkedDemo, setImmobilized };
 }

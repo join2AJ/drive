@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Lock, Mic, HardDrive, Cloud, Video, ChevronRight } from 'lucide-react';
+import { Lock, Mic, HardDrive, Cloud, Video, ChevronRight, Trash2 } from 'lucide-react';
 import { useApp } from '../state.jsx';
-import { DashcamScene, Waveform, MediaPlayer } from '../components/Media.jsx';
-import { NavBar, SectionTitle, EVENT_META } from '../components/ui.jsx';
+import { DashcamScene, Waveform, MediaPlayer, seedOf, fmtLen } from '../components/Media.jsx';
+import { NavBar, SectionTitle, EVENT_META, Sheet } from '../components/ui.jsx';
 import { fmtDay, fmtTime, fmtClock } from '../lib/format.js';
 
 const FILTERS = [
@@ -14,12 +14,13 @@ const FILTERS = [
 ];
 
 function mediaTitle(m) {
+  if (m.eventType === 'incident') return 'Logged incident';
   if (m.eventType === 'manual') return m.kind === 'audio' ? 'Voice note' : 'Saved clip';
   return EVENT_META[m.eventType]?.label ?? 'Recording';
 }
 
 export default function Vault({ push, pop, live }) {
-  const { media, tripById, live: liveState } = useApp();
+  const { media, live: liveState } = useApp();
   const [filter, setFilter] = useState('all');
   const list = useMemo(
     () => media.filter((m) => (filter === 'all' ? true : filter === 'events' ? m.eventType !== 'manual' : filter === 'locked' ? m.locked : m.kind === filter)),
@@ -65,15 +66,15 @@ export default function Vault({ push, pop, live }) {
         {list.filter((m) => m.kind === 'video').map((m) => (
           <button key={m.id} className="media-tile" onClick={() => push('media', { id: m.id })}>
             <div className="frame">
-              <DashcamScene ts={m.eventT ?? m.t} speed={40} odo={Number(m.id.slice(1)) * 3} camera={m.camera} seed={Number(m.id.slice(1))} />
+              <DashcamScene ts={m.eventT ?? m.t} speed={40} odo={seedOf(m.id) * 3} camera={m.camera} seed={seedOf(m.id)} />
               <span className="media-badge">
-                {m.eventType !== 'manual' ? (
-                  <span className={`badge ${m.eventType === 'crash' ? 'crit' : 'warn'}`} style={{ backdropFilter: 'blur(8px)' }}>{m.locked && <Lock size={11} />}{EVENT_META[m.eventType].short}</span>
+                {m.eventType !== 'manual' || m.locked ? (
+                  <span className={`badge ${m.eventType === 'crash' || m.incidentId ? 'crit' : 'warn'}`} style={{ backdropFilter: 'blur(8px)' }}>{m.locked && <Lock size={11} />}{m.eventType === 'incident' ? 'Incident' : m.eventType === 'manual' ? 'Sealed' : EVENT_META[m.eventType].short}</span>
                 ) : (
                   <span className="badge" style={{ background: 'rgba(0,0,0,.55)', color: '#fff' }}>Saved</span>
                 )}
               </span>
-              <span className="media-dur num">0:{String(m.duration).padStart(2, '0')}</span>
+              <span className="media-dur num">{fmtLen(m.duration)}</span>
             </div>
             <div className="info">
               <div className="t ellipsis">{m.camera} · {mediaTitle(m)}</div>
@@ -92,8 +93,8 @@ export default function Vault({ push, pop, live }) {
                 <div className={`glyph ${m.eventType === 'crash' ? 'crit' : 'accent'}`}><Mic size={18} /></div>
                 <div className="grow">
                   <div className="title row" style={{ gap: 6 }}>{m.camera === 'Voice note' ? 'Voice note' : `Cabin audio · ${mediaTitle(m)}`}{m.locked && <Lock size={13} className="muted" />}</div>
-                  <div className="meta">{fmtDay(m.t)}, {fmtTime(m.t)} · {m.duration}s{tripById[m.tripId] ? '' : ''}</div>
-                  <div style={{ marginTop: 6 }}><Waveform seed={Number(m.id.slice(1))} bars={40} height={18} spikeAt={m.eventT ? (m.eventT - m.t) / 1000 / m.duration : null} /></div>
+                  <div className="meta">{fmtDay(m.t)}, {fmtTime(m.t)} · {fmtLen(m.duration)}</div>
+                  <div style={{ marginTop: 6 }}><Waveform seed={seedOf(m.id)} bars={40} height={18} spikeAt={m.eventT ? (m.eventT - m.t) / 1000 / m.duration : null} /></div>
                 </div>
                 <ChevronRight className="chev" size={18} />
               </button>
@@ -107,25 +108,52 @@ export default function Vault({ push, pop, live }) {
 }
 
 export function MediaScreen({ id, pop, push }) {
-  const { media, tripById, placeNameAt, setToast } = useApp();
+  const { media, tripById, incidents, placeNameAt, setToast, deleteMedia } = useApp();
+  const [confirm, setConfirm] = useState(false);
   const m = media.find((x) => x.id === id);
-  const trip = tripById[m.tripId];
+  if (!m) return <div className="screen pushed"><NavBar title="Recording" onBack={pop} /><div className="card muted">This recording was deleted.</div></div>;
+  const inc = incidents.find((i) => i.id === m.incidentId);
+  const trip = tripById[m.tripId] ?? (inc ? { samples: inc.gps } : null);
   return (
     <div className="screen pushed">
       <NavBar title={mediaTitle(m)} onBack={pop} />
       <MediaPlayer media={m} trip={trip} onShare={() => setToast('Clip exported to Photos')} />
-      {trip && (
+      {inc && (
         <>
-          <SectionTitle>From trip</SectionTitle>
-          <button className="list list-item" onClick={() => push('trip', { id: trip.id })}>
+          <SectionTitle>Sealed in case</SectionTitle>
+          <button className="list list-item" onClick={() => push('case', { id: inc.id })}>
+            <div className="glyph crit"><Lock size={18} /></div>
             <div className="grow">
-              <div className="title">{placeNameAt(trip.samples[0]) ?? 'Unknown'} → {placeNameAt(trip.samples[trip.samples.length - 1]) ?? 'Roadside'}</div>
-              <div className="meta">{fmtDay(trip.start)}, {fmtTime(trip.start)} – {fmtTime(trip.end)}</div>
+              <div className="title">{inc.id}</div>
+              <div className="meta">Part of an incident · can’t be deleted</div>
             </div>
             <ChevronRight className="chev" size={18} />
           </button>
         </>
       )}
+      {tripById[m.tripId] && (
+        <>
+          <SectionTitle>From trip</SectionTitle>
+          <button className="list list-item" onClick={() => push('trip', { id: m.tripId })}>
+            <div className="grow">
+              <div className="title">{placeNameAt(trip.samples[0]) ?? 'Unknown'} → {placeNameAt(trip.samples[trip.samples.length - 1]) ?? 'Roadside'}</div>
+              <div className="meta">{fmtDay(tripById[m.tripId].start)}, {fmtTime(tripById[m.tripId].start)} – {fmtTime(tripById[m.tripId].end)}</div>
+            </div>
+            <ChevronRight className="chev" size={18} />
+          </button>
+        </>
+      )}
+      {!m.locked && (
+        <button className="btn" style={{ marginTop: 20, color: 'var(--critical-ink)' }} onClick={() => setConfirm(true)}><Trash2 size={17} /> Delete recording</button>
+      )}
+      <Sheet open={confirm} onClose={() => setConfirm(false)}>
+        <h3>Delete this recording?</h3>
+        <p className="muted" style={{ margin: '6px 0 16px' }}>It will be removed from the phone and the tracker's SD card.</p>
+        <div className="stack">
+          <button className="btn danger" onClick={() => { if (deleteMedia(m.id)) { setToast('Recording deleted'); pop(); } }}>Delete</button>
+          <button className="btn" onClick={() => setConfirm(false)}>Keep it</button>
+        </div>
+      </Sheet>
     </div>
   );
 }

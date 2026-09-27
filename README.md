@@ -18,7 +18,10 @@ Out of the box it runs on a **built-in tracker simulator** that generates 6 week
 | **Insights** | Safety score and trend, and distance per day with an estimated fuel cost. **Frequent places** are found automatically, including places you visit often but never named (the app suggests naming them). It also shows top routes with typical and best times, a commute tip ("leave before 8:33 to save 2 min"), a speed-profile histogram, a when-you-drive heatmap and habits (night driving, idling, average trip). |
 | **Vault** | Live dashcam view and SD-card and cloud storage status. Event clips (collision and harsh braking) are auto-locked. It also holds saved clips, cabin audio and voice notes. The player overlays recorded speed, time and GPS as a HUD on the video. |
 | **Alerts** | Every alert: safety (collision, harsh brake or acceleration, overspeed), geofence enter/exit, ignition, power cut and low battery. Collisions open a full **incident report** with the impact numbers, a speed chart around the impact, locked evidence, a timeline and actions (call 112, send to insurer). |
-| **Settings** | Hardware info, **tunable detection rules** (the event counts update live), geofences with radius, notifications, emergency contacts, SOS countdown, dark/light/system theme and the data source. |
+| **Vehicle controls** | Opened from Live (*All controls*). A top-down car shows the live state of locks, mirrors, windows, boot, lights, hazards, engine and horn. Controls: lock/unlock, remote engine start/stop (press and hold), immobilizer, parking guard, valet mode, find my car (horn + lights), pre-cool AC with temperature, mirror fold, window vent, boot, headlights, hazards, horn and a speed limiter. Each command shows *Sending…* until the car confirms it and goes into a command history. Safety interlocks block unsafe commands while driving: engine off, mirrors, boot, horn and opening windows. A *Parked (demo)* switch lets you try everything. Each control is tagged with the hardware it needs: **Tracker**, **Relay** or **CAN module**. |
+| **Fuel & costs** | Every trip is costed from its distance at your real mileage, plus fuel burnt idling. You can group spend by **destination, route, weekday or time of day**, sort by cost, visits or km, and expand a group to see each trip and its cost. It also shows ₹/km, ₹/day and idling waste, and names the costliest destination. Visit counts and trip costs appear in Insights (frequent places) and on every trip. |
+| **Incidents & claims** | **Log incident** (Live, Alerts or any trip) → choose what happened (collision, hit & run, theft, vandalism, pothole, road rage, parking damage, other) → *just now* or a moment on an earlier trip → **Seal evidence**. The GPS track from 15 min before to 5 min after is frozen with a SHA-256 fingerprint. Front camera, cabin camera and cabin audio are locked, and nothing sealed can be deleted. The case file then remembers everything the insurer will ask for, saved on the phone as you type: your statement (with prompts), a real **voice statement** from the microphone, photos (camera or gallery, which can't be removed once added), a tap-to-mark **damage map**, other party details, injuries, police FIR, witnesses, repair estimate, and your driver and policy details (pre-filled from Settings). **Prepare claim summary** writes the claim text from the sealed data and your answers, then lets you copy it, share it or download a JSON claim pack. After you mark the case as *sent to insurer* it becomes read-only, with dated notes only. Every action is written to a *record of changes*. The auto-detected collision becomes a case automatically. |
+| **Settings** | Hardware info, **tunable detection rules** (the event counts update live), **fuel type, price and mileage** (Petrol, Diesel, CNG or EV presets), **claim details remembered for every claim**, geofences with radius, notifications, emergency contacts, SOS countdown, dark/light/system theme and the data source. |
 
 When the live stream matches the collision rule, a **full-screen SOS** takes over. It vibrates, counts down (30 s by default), then alerts your emergency contacts unless you tap *I'm OK*. To try it, tap **Live → Test crash detection → Simulate**.
 
@@ -37,6 +40,10 @@ All of these live in [`src/lib/analytics.js`](src/lib/analytics.js). They work o
 | Safety score | 100 minus event penalties, scaled by distance. |
 
 Unit tests in [`test/analytics.test.js`](test/analytics.test.js) cover each rule. One test checks that the detector finds exactly the events the simulated device recorded.
+
+## Deploy on Netlify
+
+[`netlify.toml`](netlify.toml) sets the build (`npm run build` → `dist/`, Node 22) and a single-page-app fallback, so connecting the repo is all that's needed. The HTTPS it serves on is also what the voice-statement microphone and the SHA-256 evidence fingerprint rely on.
 
 ## Run it
 
@@ -72,6 +79,10 @@ The UI only depends on the data-source shape documented in [`src/data/source.js`
 
 Positions use local metres internally. [`src/lib/geo.js`](src/lib/geo.js) converts to and from lat/lng. The basemap is a lightweight SVG renderer. For production, swap it for MapLibre GL or Google Maps and keep the overlays.
 
+Incidents, photos and voice statements are stored on the device (`localStorage`) in this build. For production, move them to IndexedDB plus a write-once cloud bucket (for example S3 Object Lock) so the evidence survives the phone being lost.
+
+Remote commands (`useVehicleControls` in [`src/state.jsx`](src/state.jsx)) simulate the round trip to the car. A real backend sends the command to the tracker (for example Traccar's `/api/commands`), waits for the tracker's acknowledgement and then updates the state.
+
 > Note: a GPS-only unit provides location, speed, ignition and power events. The **Vault** (video and cabin audio) needs a tracker with camera and microphone, such as a 4G dashcam-tracker combo.
 
 ## Project layout
@@ -88,6 +99,9 @@ src/
     analytics.js        event detection, scoring, places, routes, distributions
     geo.js, format.js, rng.js
   components/           MapView, Charts, Media (dashcam/audio player), CrashOverlay, ui
-  screens/              Live, Trips, TripDetail, Insights, Vault, Alerts (+Incident), Settings
+  screens/              Live, Trips, TripDetail, Insights, Vault, Alerts (+Incident), Settings,
+                        Controls, Costs, Incidents (log wizard, claim case)
+  lib/costs.js          trip fuel cost + grouping (destination / route / weekday / time)
+  lib/evidence.js       SHA-256 sealing, GPS snapshots, photo compression, claim vocab
 test/analytics.test.js
 ```

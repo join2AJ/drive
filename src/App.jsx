@@ -8,6 +8,9 @@ import Insights from './screens/Insights.jsx';
 import Vault, { MediaScreen } from './screens/Vault.jsx';
 import Alerts, { Incident } from './screens/Alerts.jsx';
 import Settings from './screens/Settings.jsx';
+import Controls from './screens/Controls.jsx';
+import Costs from './screens/Costs.jsx';
+import { IncidentNew, IncidentCase } from './screens/Incidents.jsx';
 import CrashOverlay from './components/CrashOverlay.jsx';
 import { Toast } from './components/ui.jsx';
 
@@ -19,10 +22,13 @@ const TABS = [
   { key: 'alerts', label: 'Alerts', icon: Bell, C: Alerts },
 ];
 
-const PUSHED = { trip: TripDetail, settings: Settings, incident: Incident, media: MediaScreen, vault: Vault };
+const PUSHED = {
+  trip: TripDetail, settings: Settings, incident: Incident, media: MediaScreen, vault: Vault,
+  controls: Controls, costs: Costs, newIncident: IncidentNew, case: IncidentCase,
+};
 
 function Shell() {
-  const { alerts, toast, setToast } = useApp();
+  const { alerts, toast, setToast, incidents } = useApp();
   const [tab, setTab] = useState('live');
   const [stack, setStack] = useState([]);
 
@@ -41,13 +47,17 @@ function Shell() {
     if (usesHistory.current) history.back();
     else setStack((s) => s.slice(0, -1));
   }, []);
+  // Swap the top screen without adding a history entry (e.g. wizard → result).
+  const replace = useCallback((screen, params = {}) => {
+    setStack((s) => [...s.slice(0, -1), { screen, params, key: Date.now() }]);
+  }, []);
   useEffect(() => {
     const onPop = () => setStack((s) => s.slice(0, -1));
     addEventListener('popstate', onPop);
     return () => removeEventListener('popstate', onPop);
   }, []);
 
-  const unread = alerts.filter((a) => a.type === 'crash' || (Date.now() - a.t < 86_400_000 && ['harsh_brake', 'overspeed', 'power_cut'].includes(a.type))).length;
+  const unread = incidents.filter((i) => i.status === 'open').length + alerts.filter((a) => (Date.now() - a.t < 86_400_000 && ['harsh_brake', 'overspeed', 'power_cut'].includes(a.type))).length;
   const Tab = TABS.find((t) => t.key === tab).C;
 
   return (
@@ -55,7 +65,7 @@ function Shell() {
       <Tab key={tab} push={push} />
       {stack.map((s) => {
         const C = PUSHED[s.screen];
-        return <C key={s.key} {...s.params} push={push} pop={pop} />;
+        return <C key={s.key} {...s.params} push={push} pop={pop} replace={replace} />;
       })}
       {!stack.length && (
         <nav className="tabbar">

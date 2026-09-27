@@ -4,6 +4,13 @@ import { useApp } from '../state.jsx';
 import { NavBar, SectionTitle, Segmented, Toggle, Sheet, EVENT_META } from '../components/ui.jsx';
 import { DEFAULT_THRESHOLDS } from '../lib/analytics.js';
 
+const FUEL_PRESETS = {
+  Petrol: { pricePerL: 103.5, kmPerL: 14, idleLph: 0.8 },
+  Diesel: { pricePerL: 90, kmPerL: 18, idleLph: 0.7 },
+  CNG: { pricePerL: 76, kmPerL: 22, idleLph: 0.6 },
+  EV: { pricePerL: 9, kmPerL: 7, idleLph: 0.3 },
+};
+
 function SliderRow({ label, value, min, max, step = 1, unit, onChange, hint }) {
   return (
     <div style={{ padding: '12px 14px' }}>
@@ -22,6 +29,7 @@ export default function Settings({ pop }) {
   const [sheet, setSheet] = useState(null);
   const [api, setApi] = useState({ url: '', device: '', token: '' });
   const set = (k) => (v) => setThresholds({ ...thresholds, [k]: v });
+  const setFuel = (patch) => setSettings({ ...settings, fuel: { ...settings.fuel, ...patch } });
   const d = vehicle.device;
 
   const found = useMemo(() => {
@@ -92,6 +100,27 @@ export default function Settings({ pop }) {
               <div className="meta num">Radius {f.radius} m · alert on enter & exit</div>
             </div>
             <Toggle on={f.enabled} label={`${f.name} geofence`} onChange={(on) => setFences(fences.map((x) => (x.id === f.id ? { ...x, enabled: on } : x)))} />
+          </div>
+        ))}
+      </div>
+
+      <SectionTitle>Fuel & mileage</SectionTitle>
+      <div className="list">
+        <div style={{ padding: '12px 14px 0' }}>
+          <Segmented options={['Petrol', 'Diesel', 'CNG', 'EV'].map((v) => ({ value: v, label: v }))} value={settings.fuel.type} onChange={(v) => setFuel({ type: v, ...(FUEL_PRESETS[v]) })} />
+        </div>
+        <SliderRow label={settings.fuel.type === 'EV' ? 'Price per kWh' : settings.fuel.type === 'CNG' ? 'Price per kg' : 'Price per litre'} value={settings.fuel.pricePerL} min={5} max={140} step={0.5} unit=" ₹" onChange={(v) => setFuel({ pricePerL: v })} />
+        <SliderRow label={settings.fuel.type === 'EV' ? 'Efficiency (km/kWh)' : 'Real-world mileage'} value={settings.fuel.kmPerL} min={4} max={30} step={0.5} unit={settings.fuel.type === 'EV' ? ' km/kWh' : ' km/L'} onChange={(v) => setFuel({ kmPerL: v })} />
+        <SliderRow label="Burn while idling" value={settings.fuel.idleLph} min={0} max={2} step={0.1} unit=" /h" onChange={(v) => setFuel({ idleLph: v })} hint="Used for trip costs and the Fuel & costs insight" />
+      </div>
+
+      <SectionTitle>Claim details</SectionTitle>
+      <div className="card stack">
+        <div className="muted" style={{ fontSize: 12.5 }}>Filled into every incident claim so you don't have to remember them at the roadside.</div>
+        {[['driverName', 'Driver name'], ['phone', 'Phone'], ['licenceNo', 'Driving licence no.'], ['insurer', 'Insurer'], ['policyNo', 'Policy no.']].map(([k, l]) => (
+          <div key={k} className="field">
+            <label htmlFor={`cp-${k}`}>{l}</label>
+            <input id={`cp-${k}`} value={settings.claimProfile[k] ?? ''} onChange={(e) => setSettings({ ...settings, claimProfile: { ...settings.claimProfile, [k]: e.target.value } })} />
           </div>
         ))}
       </div>

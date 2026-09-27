@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ChevronLeft, Siren, OctagonAlert, Gauge, Zap, LogIn, LogOut, Power, PowerOff, BatteryWarning,
   ShieldAlert, Truck, Home, Briefcase, Dumbbell, ShoppingBag, Heart, GraduationCap, Plane, MapPin, Mic, Video,
@@ -62,7 +63,9 @@ export function Toggle({ on, onChange, label }) {
 
 export function Sheet({ open, onClose, children }) {
   if (!open) return null;
-  return (
+  // Portal to the app root so a sheet opened from a scrolled screen still sits at the bottom.
+  const host = document.querySelector('.app');
+  const body = (
     <>
       <div className="scrim" onClick={onClose} />
       <div className="sheet" role="dialog" aria-modal="true">
@@ -71,14 +74,18 @@ export function Sheet({ open, onClose, children }) {
       </div>
     </>
   );
+  return host ? createPortal(body, host) : body;
 }
 
 export function Toast({ message, onDone }) {
+  // Keep the latest callback without restarting the timer on every parent render.
+  const done = useRef(onDone);
+  done.current = onDone;
   useEffect(() => {
     if (!message) return undefined;
-    const id = setTimeout(onDone, 2600);
+    const id = setTimeout(() => done.current(), 2600);
     return () => clearTimeout(id);
-  }, [message, onDone]);
+  }, [message]);
   if (!message) return null;
   return <div className="toast" role="status">{message}</div>;
 }

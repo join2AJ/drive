@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ChevronRight, Siren, Phone, FileText, Share2, Lock, Video, Mic, Check } from 'lucide-react';
+import { ChevronRight, Siren, Phone, Share2, Lock, Video, Mic, Check, FilePlus2, FolderOpen } from 'lucide-react';
+import { IncidentList } from './Incidents.jsx';
+import { roadAt } from '../data/cityModel.js';
 import { useApp } from '../state.jsx';
 import { EVENT_META, EventGlyph, NavBar, SectionTitle } from '../components/ui.jsx';
 import MapView, { Route, Pin } from '../components/MapView.jsx';
@@ -16,7 +18,7 @@ const GROUPS = {
 };
 
 export default function Alerts({ push }) {
-  const { alerts, placeNameAt } = useApp();
+  const { alerts, placeNameAt, incidents } = useApp();
   const [group, setGroup] = useState('all');
   const [limit, setLimit] = useState(60);
   const list = useMemo(() => alerts.filter(GROUPS[group]), [alerts, group]);
@@ -31,14 +33,25 @@ export default function Alerts({ push }) {
 
   return (
     <div className="screen">
-      <div className="topbar"><h1>Alerts</h1></div>
+      <div className="topbar">
+        <h1>Alerts</h1>
+        <button className="btn small danger" onClick={() => push('newIncident')}><FilePlus2 size={16} /> Log incident</button>
+      </div>
+
+      {incidents.length > 0 && (
+        <>
+          <div className="day-head" style={{ marginTop: 4 }}><span>Incidents & claims</span><span>{incidents.length}</span></div>
+          <IncidentList push={push} />
+          <div style={{ height: 14 }} />
+        </>
+      )}
 
       {crash && group !== 'geofence' && group !== 'vehicle' && (
         <button className="banner fade" onClick={() => push('incident', { alertId: crash.id })}>
           <div className="glyph crit"><Siren size={20} /></div>
           <div className="grow">
             <div style={{ fontWeight: 700 }}>Incident report ready</div>
-            <div className="ink2" style={{ fontSize: 13 }}>Possible collision {fmtAgo(crash.t)} near {placeNameAt(crash) ?? 'Outer Ring Rd'} · video & audio locked</div>
+            <div className="ink2" style={{ fontSize: 13 }}>Possible collision {fmtAgo(crash.t)} near {placeNameAt(crash) ?? roadAt(crash)?.name} · video & audio locked</div>
           </div>
           <ChevronRight className="chev" size={18} />
         </button>
@@ -75,7 +88,8 @@ export default function Alerts({ push }) {
 }
 
 export function Incident({ alertId, pop, push }) {
-  const { alerts, tripById, media, settings, setToast, placeNameAt } = useApp();
+  const { alerts, tripById, media, settings, setToast, placeNameAt, incidents } = useApp();
+  const caseFile = incidents.find((i) => i.autoKey === 'auto-crash');
   const a = alerts.find((x) => x.id === alertId) ?? alerts.find((x) => x.type === 'crash');
   const trip = tripById[a.tripId];
   const i0 = Math.max(0, a.i - 45);
@@ -86,7 +100,7 @@ export function Incident({ alertId, pop, push }) {
   const [acked, setAcked] = useState(false);
 
   const timeline = [
-    { t: a.t - a.durationSec * 1000, text: `Travelling at ${Math.round(a.fromKmh)} km/h on the Outer Ring Rd` },
+    { t: a.t - a.durationSec * 1000, text: `Travelling at ${Math.round(a.fromKmh)} km/h on ${roadAt(a)?.name ?? 'the road'}` },
     { t: a.t, text: `Speed collapsed to ${Math.round(a.toKmh)} km/h in ${a.durationSec.toFixed(1)} s (${a.gforce.toFixed(2)} g)` },
     { t: a.t + 1000, text: 'Dashcam & cabin audio locked (−15 s / +15 s)' },
     { t: a.t + 4000, text: 'Push alert + SMS sent to emergency contacts' },
@@ -130,7 +144,7 @@ export function Incident({ alertId, pop, push }) {
         </MapView>
         <div className="row" style={{ padding: 12 }}>
           <div className="grow">
-            <div style={{ fontWeight: 650, fontSize: 14 }}>{placeNameAt(a) ?? 'Outer Ring Rd'}</div>
+            <div style={{ fontWeight: 650, fontSize: 14 }}>{placeNameAt(a) ?? roadAt(a)?.name}</div>
             <div className="muted num" style={{ fontSize: 12 }}>{formatLatLng(a.x, a.y)}</div>
           </div>
           <button className="btn small" onClick={() => setToast('Opening navigation…')}>Navigate</button>
@@ -173,9 +187,9 @@ export function Incident({ alertId, pop, push }) {
 
       <SectionTitle>Actions</SectionTitle>
       <div className="stack">
+        {caseFile && <button className="btn primary" onClick={() => push('case', { id: caseFile.id })}><FolderOpen size={18} /> Open claim case {caseFile.id}</button>}
         <button className="btn danger" onClick={() => setToast(`Calling ${settings.contacts[1]?.phone ?? '112'}…`)}><Phone size={18} /> Call emergency (112)</button>
-        <button className="btn" onClick={() => setToast('Claim pack sent to insurer')}><FileText size={18} /> Send to insurer</button>
-        <button className="btn" onClick={() => { setAcked(true); setToast('Marked as resolved'); }} disabled={acked}><Check size={18} /> {acked ? 'Resolved' : 'Mark as false alarm / resolved'}</button>
+                <button className="btn" onClick={() => { setAcked(true); setToast('Marked as resolved'); }} disabled={acked}><Check size={18} /> {acked ? 'Resolved' : 'Mark as false alarm / resolved'}</button>
       </div>
     </div>
   );

@@ -145,3 +145,19 @@ export function route(fromNode, toNode) {
   path.reverse();
   return { nodes: [fromNode, ...path.map((p) => p.node)], edges: path.map((p) => p.edge) };
 }
+
+/** Nearest road segment to a point (for road names and speed limits). */
+export function roadAt(pt) {
+  let best = null;
+  let bd = Infinity;
+  for (const e of city.edges) {
+    const a = city.nodes[e.a];
+    const b = city.nodes[e.b];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const t = Math.max(0, Math.min(1, ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / (dx * dx + dy * dy)));
+    const d = Math.hypot(a.x + dx * t - pt.x, a.y + dy * t - pt.y);
+    if (d < bd) { bd = d; best = e; }
+  }
+  return best;
+}

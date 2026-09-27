@@ -6,11 +6,12 @@ import MapView, { Pin } from '../components/MapView.jsx';
 import { Segmented, SectionTitle, EVENT_META, PlaceIcon, Sheet, CountUp } from '../components/ui.jsx';
 import { dailyTotals, frequentPlaces, frequentRoutes, median, speedDistribution, timeOfDayMatrix } from '../lib/analytics.js';
 import { fmtDuration, fmtHour, fmtKm } from '../lib/format.js';
+import { costBreakdown, fmtINR } from '../lib/costs.js';
 
 const DOW = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
 
 export default function Insights({ push }) {
-  const { trips, thresholds, savedPlaces, settings, setSettings, setToast } = useApp();
+  const { trips, thresholds, savedPlaces, settings, setSettings, setToast, placeNameAt } = useApp();
   const [period, setPeriod] = useState(30);
   const [naming, setNaming] = useState(null);
   const [name, setName] = useState('');
@@ -65,6 +66,8 @@ export default function Insights({ push }) {
     return { cut, early: median(early), late: median(late), r };
   }, [routes, cur, savedPlaces]);
 
+  const money = useMemo(() => costBreakdown(cur, { by: 'destination', fuel: settings.fuel, nameAt: placeNameAt }), [cur, settings.fuel, placeNameAt]);
+  const topMoney = [...money.groups].sort((a, b) => b.cost - a.cost).slice(0, 5);
   const delta = A.score - P.score;
   const mapFit = { minX: -200, minY: -200, maxX: 8900, maxY: 12100 };
 
@@ -147,6 +150,9 @@ export default function Insights({ push }) {
               <div className="grow">
                 <div className="title">{p.name ?? 'Unlabeled place'}</div>
                 <div className="meta">Usually arrive {fmtHour(p.typicalArrival)}{p.avgDwellSec ? ` · stay ${fmtDuration(p.avgDwellSec)}` : ''}</div>
+                {money.groups.find((g) => g.key === (p.name ?? 'Unlabeled place')) && (
+                  <div className="meta num">Trips here cost {fmtINR(money.groups.find((g) => g.key === (p.name ?? 'Unlabeled place')).cost)}</div>
+                )}
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div className="num" style={{ fontWeight: 700 }}>{p.visits}</div>
@@ -155,6 +161,27 @@ export default function Insights({ push }) {
             </div>
           ))}
         </div>
+      </div>
+
+      <SectionTitle action="Breakdown" onAction={() => push('costs')}>Fuel spend by place</SectionTitle>
+      <div className="list">
+        <div className="row" style={{ padding: '14px 14px 4px', alignItems: 'baseline' }}>
+          <div className="num" style={{ fontSize: 26, fontWeight: 750, letterSpacing: '-0.02em' }}>{fmtINR(money.total)}</div>
+          <div className="muted num" style={{ fontSize: 13 }}>{period} days · {fmtINR(A.d ? money.total / (A.d / 1000) : 0, 2)}/km</div>
+        </div>
+        {topMoney.map((g) => (
+          <button key={g.key} className="bar-row" onClick={() => push('costs')}>
+            <div className="row" style={{ gap: 8 }}>
+              <div className="grow" style={{ minWidth: 0 }}>
+                <div className="ellipsis" style={{ fontWeight: 650 }}>{g.key}</div>
+                <div className="muted num" style={{ fontSize: 12.5 }}>{g.visits} visits · {fmtKm(g.distance, 0)}</div>
+              </div>
+              <div className="num" style={{ fontWeight: 750 }}>{fmtINR(g.cost)}</div>
+            </div>
+            <div className="bar-track"><div style={{ width: `${(g.cost / (topMoney[0]?.cost || 1)) * 100}%` }} /></div>
+          </button>
+        ))}
+        <div className="muted" style={{ fontSize: 12, padding: '4px 14px 12px' }}>Cost of trips ending at each place · {settings.fuel.type} {fmtINR(settings.fuel.pricePerL, 2)}/L, {settings.fuel.kmPerL} km/L</div>
       </div>
 
       <SectionTitle>Top routes</SectionTitle>

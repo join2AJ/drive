@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  Settings, Lock, Unlock, Mic, Video, Share2, Siren, Satellite, Signal, BatteryFull, KeyRound, ChevronRight, Clock, Route as RouteIcon,
+  Settings, Lock, Unlock, Mic, Video, Share2, Siren, Satellite, Signal, BatteryFull, KeyRound, ChevronRight, Clock, Route as RouteIcon, LockOpen, FilePlus2, Snowflake, FlipHorizontal2, Megaphone,
 } from 'lucide-react';
 import MapView, { Route, Vehicle, Fence, Pin, boundsOf } from '../components/MapView.jsx';
 import { SpeedGauge, ScoreRing } from '../components/Charts.jsx';
@@ -8,26 +8,11 @@ import { Sheet, PlaceIcon, SectionTitle, CountUp } from '../components/ui.jsx';
 import { useApp } from '../state.jsx';
 import { fmtKm, fmtDuration, fmtAgo } from '../lib/format.js';
 import { summarizeTrip } from '../lib/analytics.js';
-import { city } from '../data/cityModel.js';
+import { roadAt } from '../data/cityModel.js';
 import { formatLatLng } from '../lib/geo.js';
 
-function roadAt(pt) {
-  let best = null;
-  let bd = Infinity;
-  for (const e of city.edges) {
-    const a = city.nodes[e.a];
-    const b = city.nodes[e.b];
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const t = Math.max(0, Math.min(1, ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / (dx * dx + dy * dy)));
-    const d = Math.hypot(a.x + dx * t - pt.x, a.y + dy * t - pt.y);
-    if (d < bd) { bd = d; best = e; }
-  }
-  return best;
-}
-
 export default function Live({ push }) {
-  const { live, vehicle, trips, fences, placeAt, immobilized, setImmobilized, setToast, alerts } = useApp();
+  const { live, vehicle, trips, fences, placeAt, immobilized, setImmobilized, setToast, alerts, controls } = useApp();
   const [sheet, setSheet] = useState(null);
   const { cur, heading, trail, ahead } = live;
   const moving = cur.v > 2;
@@ -120,8 +105,16 @@ export default function Live({ push }) {
           </div>
         </div>
 
-        <SectionTitle>Controls</SectionTitle>
+        <button className="btn danger" style={{ marginTop: 12, height: 52 }} onClick={() => push('newIncident')}>
+          <FilePlus2 size={19} /> Log an incident
+        </button>
+
+        <SectionTitle action="All controls" onAction={() => push('controls')}>Controls</SectionTitle>
         <div className="actions">
+          <button className={`action ${controls.state.locked ? '' : 'on'}`} onClick={() => controls.send('lock', controls.state.locked ? 'Doors unlocked' : 'Doors locked', (x) => ({ ...x, locked: !x.locked }))}>
+            <div className="glyph">{controls.pending.lock ? <span className="spinner" /> : controls.state.locked ? <Lock size={22} /> : <LockOpen size={22} />}</div>
+            {controls.state.locked ? 'Locked' : 'Unlocked'}
+          </button>
           <button className={`action ${immobilized ? 'on' : ''}`} onClick={() => setSheet('immobilize')}>
             <div className="glyph">{immobilized ? <Lock size={22} /> : <KeyRound size={22} />}</div>
             {immobilized ? 'Engine cut' : 'Immobilize'}
@@ -129,6 +122,9 @@ export default function Live({ push }) {
           <button className="action" onClick={() => setSheet('cabin')}><div className="glyph"><Mic size={22} /></div>Listen in</button>
           <button className="action" onClick={() => push('vault', { live: true })}><div className="glyph"><Video size={22} /></div>Dashcam</button>
           <button className="action" onClick={() => setToast('Live location link copied · expires in 1 h')}><div className="glyph"><Share2 size={22} /></div>Share trip</button>
+          <button className="action" onClick={() => push('controls')}><div className="glyph"><Snowflake size={22} /></div>Climate</button>
+          <button className="action" onClick={() => push('controls')}><div className="glyph"><FlipHorizontal2 size={22} /></div>Mirrors</button>
+          <button className="action" onClick={() => push('controls')}><div className="glyph"><Megaphone size={22} /></div>Horn & find</button>
         </div>
 
         <div className="card" style={{ marginTop: 16 }}>

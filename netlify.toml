@@ -1,0 +1,12 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Single-page app: serve index.html for any deep link.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
