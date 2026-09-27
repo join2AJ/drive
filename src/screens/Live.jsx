@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  Settings, Lock, Unlock, Mic, Video, Share2, Siren, Satellite, Signal, BatteryFull, KeyRound, ChevronRight, Clock, Route as RouteIcon, LockOpen, FilePlus2, Snowflake, FlipHorizontal2, Megaphone,
+  Settings, Lock, Unlock, Mic, Video, Share2, Siren, Sparkles, ShieldAlert, Copy, X, CloudOff, FileClock, Satellite, Signal, BatteryFull, KeyRound, ChevronRight, Clock, Route as RouteIcon, LockOpen, FilePlus2, Snowflake, FlipHorizontal2, Megaphone,
 } from 'lucide-react';
 import MapView, { Route, Vehicle, Fence, Pin, boundsOf } from '../components/MapView.jsx';
 import { SpeedGauge, ScoreRing } from '../components/Charts.jsx';
@@ -10,10 +10,22 @@ import { fmtKm, fmtDuration, fmtAgo } from '../lib/format.js';
 import { summarizeTrip } from '../lib/analytics.js';
 import { roadAt } from '../data/cityModel.js';
 import { formatLatLng } from '../lib/geo.js';
+import { reminderStatus } from '../lib/paperwork.js';
+import { shareUrl } from './Stolen.jsx';
 
 export default function Live({ push }) {
-  const { live, vehicle, trips, fences, placeAt, immobilized, setImmobilized, setToast, alerts, controls } = useApp();
+  const { live, vehicle, trips, fences, placeAt, immobilized, setImmobilized, setToast, alerts, controls, share, setShare, stolen, settings, network, reminders, odometerKm } = useApp();
   const [sheet, setSheet] = useState(null);
+  const [shareWith, setShareWith] = useState(() => settings.contacts.filter((c) => c.phone !== '112').map((c) => c.name));
+  const overdue = reminders.filter((r) => reminderStatus(r, Date.now(), odometerKm).state === 'overdue');
+  const startShare = () => {
+    const token = `ride-${Math.random().toString(36).slice(2, 9)}`;
+    setShare({ active: true, token, with: shareWith, stopOnArrival: true, startedAt: Date.now() });
+    setSheet(null);
+    const url = shareUrl(token);
+    navigator.clipboard?.writeText(url).catch(() => {});
+    setToast(`Sharing with ${shareWith.join(', ') || 'link holders'} · link copied`);
+  };
   const { cur, heading, trail, ahead } = live;
   const moving = cur.v > 2;
   const road = useMemo(() => roadAt(cur), [cur]);
@@ -61,6 +73,9 @@ export default function Live({ push }) {
             {moving ? 'Driving' : 'Stopped'} · {vehicle.plate}
           </div>
         </div>
+        <button className="icon-btn" style={{ background: 'var(--glass)', backdropFilter: 'blur(12px)', color: 'var(--accent)' }} aria-label="Ask about your driving" onClick={() => push('ask')}>
+          <Sparkles size={20} />
+        </button>
         <button className="icon-btn" style={{ background: 'var(--glass)', backdropFilter: 'blur(12px)' }} aria-label="Settings" onClick={() => push('settings')}>
           <Settings size={20} />
         </button>
@@ -85,6 +100,44 @@ export default function Live({ push }) {
           </div>
         </div>
 
+        {stolen.active && (
+          <button className="banner" style={{ marginTop: 12 }} onClick={() => push('stolen')}>
+            <div className="glyph crit"><ShieldAlert size={18} /></div>
+            <div className="grow"><div style={{ fontWeight: 700 }}>Stolen-vehicle mode is on</div><div className="ink2" style={{ fontSize: 13 }}>Tracking every 5 s · {stolen.engineCutAt ? 'engine cut' : 'engine cut armed'}</div></div>
+            <ChevronRight className="chev" size={18} />
+          </button>
+        )}
+        {share?.active && (
+          <div className="banner info" style={{ marginTop: 12 }}>
+            <div className="glyph accent"><Share2 size={18} /></div>
+            <div className="grow" style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 650 }}>Sharing this ride</div>
+              <div className="ink2 ellipsis" style={{ fontSize: 13 }}>With {share.with.join(', ') || 'link holders'} · stops on arrival</div>
+            </div>
+            <button className="icon-btn" aria-label="Copy link" onClick={() => { navigator.clipboard?.writeText(shareUrl(share.token)).then(() => setToast('Link copied'), () => setToast(shareUrl(share.token))); }}><Copy size={16} /></button>
+            <button className="icon-btn" aria-label="Stop sharing" onClick={() => { setShare({ ...share, active: false, endedAt: Date.now(), endReason: 'stopped' }); setToast('Stopped sharing'); }}><X size={16} /></button>
+          </div>
+        )}
+        {!network.connected && (
+          <div className="banner info" style={{ marginTop: 12, background: 'var(--warning-soft)', borderColor: 'color-mix(in srgb, var(--warning) 40%, transparent)' }}>
+            <div className="glyph warn"><CloudOff size={18} /></div>
+            <div className="grow">
+              <div style={{ fontWeight: 650 }}>{network.phoneOnline ? 'Car is out of mobile coverage' : 'Your phone is offline'}</div>
+              <div className="ink2" style={{ fontSize: 13 }}>
+                {network.phoneOnline
+                  ? `Showing the last position received. GPS keeps working without internet: the tracker is storing ${live.buffered} point${live.buffered === 1 ? '' : 's'} and will upload them when it reconnects.`
+                  : `Showing the last position received. The car keeps reporting to the server; the ${live.buffered} point${live.buffered === 1 ? '' : 's'} you've missed will appear when your phone reconnects.`}
+              </div>
+            </div>
+          </div>
+        )}
+        {overdue.length > 0 && (
+          <button className="banner" style={{ marginTop: 12, background: 'var(--warning-soft)', borderColor: 'color-mix(in srgb, var(--warning) 40%, transparent)' }} onClick={() => push('reminders')}>
+            <div className="glyph warn"><FileClock size={18} /></div>
+            <div className="grow"><div style={{ fontWeight: 650 }}>{overdue.map((r) => r.label).join(', ')} overdue</div><div className="ink2" style={{ fontSize: 13 }}>Tap to renew or mark done</div></div>
+            <ChevronRight className="chev" size={18} />
+          </button>
+        )}
         {lastCritical && (
           <button className="banner" style={{ marginTop: 12 }} onClick={() => push('incident', { alertId: lastCritical.id })}>
             <div className="glyph crit"><Siren size={18} /></div>
@@ -121,14 +174,14 @@ export default function Live({ push }) {
           </button>
           <button className="action" onClick={() => setSheet('cabin')}><div className="glyph"><Mic size={22} /></div>Listen in</button>
           <button className="action" onClick={() => push('vault', { live: true })}><div className="glyph"><Video size={22} /></div>Dashcam</button>
-          <button className="action" onClick={() => setToast('Live location link copied · expires in 1 h')}><div className="glyph"><Share2 size={22} /></div>Share trip</button>
+          <button className={`action ${share?.active ? 'on' : ''}`} onClick={() => setSheet('share')}><div className="glyph" style={share?.active ? { background: 'var(--accent)', color: '#fff' } : undefined}><Share2 size={22} /></div>Share ride</button>
           <button className="action" onClick={() => push('controls')}><div className="glyph"><Snowflake size={22} /></div>Climate</button>
           <button className="action" onClick={() => push('controls')}><div className="glyph"><FlipHorizontal2 size={22} /></div>Mirrors</button>
           <button className="action" onClick={() => push('controls')}><div className="glyph"><Megaphone size={22} /></div>Horn & find</button>
         </div>
 
         <div className="card" style={{ marginTop: 16 }}>
-          <div className="card-title">Tracker health · updated just now</div>
+          <div className="card-title">Tracker health · {network.connected ? 'updated just now' : `last update ${fmtAgo(live.now)}`}</div>
           <div className="health">
             <div><Satellite size={18} color="var(--good-ink)" /><b className="num">14</b>GPS sats</div>
             <div><Signal size={18} color="var(--good-ink)" /><b>4G</b>–71 dBm</div>
@@ -166,6 +219,20 @@ export default function Live({ push }) {
             <button className="btn" onClick={() => setSheet(null)}>Cancel</button>
           </div>
         </div>
+      </Sheet>
+
+      <Sheet open={sheet === 'share'} onClose={() => setSheet(null)}>
+        <h3>Share my ride</h3>
+        <p className="muted" style={{ margin: '4px 0 14px' }}>They get a live map link with your ETA — no app needed. It stops automatically when you arrive{placeAt(live.ahead[live.ahead.length - 1])?.name ? ` at ${placeAt(live.ahead[live.ahead.length - 1]).name}` : ''}.</p>
+        <div className="list" style={{ marginBottom: 14 }}>
+          {settings.contacts.filter((c) => c.phone !== '112').map((c) => (
+            <label key={c.phone} className="list-item plain" style={{ cursor: 'pointer' }}>
+              <input type="checkbox" checked={shareWith.includes(c.name)} onChange={(e) => setShareWith(e.target.checked ? [...shareWith, c.name] : shareWith.filter((n) => n !== c.name))} style={{ width: 20, height: 20, accentColor: 'var(--accent)' }} />
+              <div className="grow"><div className="title">{c.name}</div><div className="meta num">{c.phone}</div></div>
+            </label>
+          ))}
+        </div>
+        <button className="btn primary" onClick={startShare}><Share2 size={18} /> Start sharing</button>
       </Sheet>
 
       <Sheet open={sheet === 'cabin'} onClose={() => setSheet(null)}>

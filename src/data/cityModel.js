@@ -161,3 +161,36 @@ export function roadAt(pt) {
   }
   return best;
 }
+
+// Named junctions so insights can say "Hebbal flyover" instead of coordinates.
+const LANDMARK_DEFS = [
+  [0, 10, 'Goraguntepalya junction'], [4, 10, 'Hebbal flyover'], [8, 10, 'Nagawara junction'], [12, 10, 'Manyata Tech Park gate'],
+  [16, 10, 'KR Puram bridge'], [4, 5, 'Mekhri circle'], [8, 5, 'Kempapura junction'], [12, 5, 'Thanisandra main road'],
+  [16, 5, 'Bagalur cross'], [4, 15, 'RT Nagar signal'], [8, 15, 'Kalyan Nagar signal'], [12, 15, 'HRBR layout junction'],
+  [16, 15, 'Tin Factory'], [4, 20, 'Sadashivanagar'], [8, 20, 'Frazer Town'], [12, 20, 'Banaswadi ROB'], [0, 5, 'Yeshwanthpur circle'],
+  [0, 15, 'Malleshwaram 18th cross'], [4, 13, 'Ganganagar'], [16, 0, 'Kempegowda Airport'],
+];
+export const landmarks = LANDMARK_DEFS.map(([i, j, name]) => {
+  const n = city.nodes[city.id(i, j)];
+  return { name, x: n.x, y: n.y };
+});
+
+/** Human name for a point: nearest landmark within 450 m, else the road name. */
+export function describePoint(pt) {
+  let best = null;
+  let bd = Infinity;
+  for (const l of landmarks) {
+    const d = Math.hypot(l.x - pt.x, l.y - pt.y);
+    if (d < bd) { bd = d; best = l; }
+  }
+  if (best && bd < 450) return best.name;
+  return roadAt(pt)?.name ?? 'Unknown road';
+}
+
+// FASTag toll plazas (fee for a car, single journey).
+export const tollPlazas = [
+  (() => { const a = city.nodes[city.id(16, 2)]; const b = city.nodes[city.id(16, 3)]; return { name: 'Sadahalli toll plaza (NH-44)', x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, fee: 115 }; })(),
+];
+
+// Default parking fees charged at saved places (₹ per visit).
+export const DEFAULT_PARKING_FEES = { mall: 60, airport: 150 };

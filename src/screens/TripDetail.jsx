@@ -3,9 +3,11 @@ import { Play, Pause, Share2, Video, Mic, ChevronRight, FilePlus2 } from 'lucide
 import { useApp } from '../state.jsx';
 import MapView, { Route, Vehicle, Pin, boundsOf } from '../components/MapView.jsx';
 import { SpeedChart, ScoreRing } from '../components/Charts.jsx';
-import { NavBar, EVENT_META, EventGlyph, SectionTitle, PlaceIcon } from '../components/ui.jsx';
+import { NavBar, EVENT_META, EventGlyph, SectionTitle, PlaceIcon, Segmented } from '../components/ui.jsx';
 import { fmtDay, fmtDuration, fmtTime, fmtClock } from '../lib/format.js';
-import { fmtINR, tripCost } from '../lib/costs.js';
+import { fmtINR, tripCosts } from '../lib/costs.js';
+import { tagFor } from '../lib/paperwork.js';
+import { describePoint } from '../data/cityModel.js';
 
 export function eventLine(e) {
   switch (e.type) {
@@ -22,7 +24,7 @@ export function eventLine(e) {
 }
 
 export default function TripDetail({ id, pop, push }) {
-  const { tripById, thresholds, placeNameAt, placeAt, media, setToast, settings } = useApp();
+  const { tripById, thresholds, placeNameAt, placeAt, media, setToast, settings, drivers, tripTags, setTripTags } = useApp();
   const trip = tripById[id];
   const [hover, setHover] = useState(null);
   const [replay, setReplay] = useState(null); // index while replaying
@@ -57,6 +59,8 @@ export default function TripDetail({ id, pop, push }) {
   const toPt = trip.samples[trip.samples.length - 1];
   const to = placeAt(toPt);
   const s = trip.summary;
+  const cost = tripCosts(trip, settings.fuel, settings.parkingFees);
+  const tag = tagFor(trip, tripTags, settings.logbookRule, placeNameAt);
 
   return (
     <div className="screen pushed">
@@ -96,7 +100,7 @@ export default function TripDetail({ id, pop, push }) {
           ['Distance', (s.distance / 1000).toFixed(1), 'km'],
           ['Duration', Math.round(s.duration / 60), 'min'],
           ['Avg', Math.round(s.avgV), 'km/h'],
-          ['Fuel', fmtINR(tripCost(s, settings.fuel).cost), `${tripCost(s, settings.fuel).litres.toFixed(2)} L`],
+          ['Cost', fmtINR(cost.cost), cost.toll || cost.parking ? 'fuel+toll+park' : `${cost.litres.toFixed(2)} L fuel`],
         ].map(([l, v, u]) => (
           <div key={l} className="stat" style={{ padding: 10 }}>
             <div className="label" style={{ fontSize: 11 }}>{l}</div>
@@ -130,7 +134,7 @@ export default function TripDetail({ id, pop, push }) {
               <EventGlyph type={e.type} />
               <div className="grow">
                 <div className="title">{EVENT_META[e.type].label}</div>
-                <div className="meta num">{fmtClock(e.t)} · {eventLine(e)}</div>
+                <div className="meta num">{fmtClock(e.t)} · {eventLine(e)} · {describePoint(e)}</div>
               </div>
               {e.type === 'crash' && <ChevronRight className="chev" size={18} />}
             </button>
@@ -157,6 +161,19 @@ export default function TripDetail({ id, pop, push }) {
           </div>
         </>
       )}
+      <SectionTitle>Trip details</SectionTitle>
+      <div className="list">
+        <div className="list-item plain"><span className="grow muted">Driver</span><b>{drivers.find((x) => x.id === trip.driver)?.name ?? '—'}</b></div>
+        <div className="list-item plain">
+          <span className="grow muted">Purpose</span>
+          <Segmented options={[{ value: 'business', label: 'Business' }, { value: 'personal', label: 'Personal' }]} value={tag} onChange={(v) => setTripTags((t) => ({ ...t, [trip.id]: v }))} />
+        </div>
+        <div className="list-item plain"><span className="grow muted">Fuel ({cost.litres.toFixed(2)} L)</span><b className="num">{fmtINR(cost.fuel)}</b></div>
+        {trip.tolls.map((x) => <div key={x.name} className="list-item plain"><span className="grow muted">FASTag · {x.name}</span><b className="num">{fmtINR(x.fee)}</b></div>)}
+        {cost.parking > 0 && <div className="list-item plain"><span className="grow muted">Parking · {placeNameAt(toPt)}</span><b className="num">{fmtINR(cost.parking)}</b></div>}
+        <div className="list-item plain"><span className="grow" style={{ fontWeight: 650 }}>Total</span><b className="num">{fmtINR(cost.cost)}</b></div>
+      </div>
+
       <button className="btn" style={{ marginTop: 20, color: 'var(--critical-ink)' }} onClick={() => push('newIncident', { tripId: trip.id })}>
         <FilePlus2 size={18} /> Log an incident on this trip
       </button>

@@ -14,12 +14,16 @@
     "cap:ios": "vite build && cap sync ios && cap open ios"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
     "@capacitor/android": "^7.4.0",
     "@capacitor/core": "^7.4.0",
     "@capacitor/ios": "^7.4.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.544.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "write-excel-file": "^4.1.1"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.4.0",

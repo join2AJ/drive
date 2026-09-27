@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Sparkles, Moon, Timer, Gauge, Route as RouteIcon, ArrowRight, Lightbulb, MapPin } from 'lucide-react';
+import { ChevronRight, Flame, Trophy, Sparkles, Moon, Timer, Gauge, Route as RouteIcon, ArrowRight, Lightbulb, MapPin } from 'lucide-react';
 import { useApp } from '../state.jsx';
 import { BarChart, Heatmap, ScoreRing, SpeedHistogram } from '../components/Charts.jsx';
 import MapView, { Pin } from '../components/MapView.jsx';
@@ -7,6 +7,7 @@ import { Segmented, SectionTitle, EVENT_META, PlaceIcon, Sheet, CountUp } from '
 import { dailyTotals, frequentPlaces, frequentRoutes, median, speedDistribution, timeOfDayMatrix } from '../lib/analytics.js';
 import { fmtDuration, fmtHour, fmtKm } from '../lib/format.js';
 import { costBreakdown, fmtINR } from '../lib/costs.js';
+import { weeklyReport, streaks } from '../lib/engagement.js';
 
 const DOW = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
 
@@ -66,7 +67,9 @@ export default function Insights({ push }) {
     return { cut, early: median(early), late: median(late), r };
   }, [routes, cur, savedPlaces]);
 
-  const money = useMemo(() => costBreakdown(cur, { by: 'destination', fuel: settings.fuel, nameAt: placeNameAt }), [cur, settings.fuel, placeNameAt]);
+  const money = useMemo(() => costBreakdown(cur, { by: 'destination', fuel: settings.fuel, nameAt: placeNameAt, parkingFees: settings.parkingFees }), [cur, settings.fuel, placeNameAt, settings.parkingFees]);
+  const week = useMemo(() => weeklyReport(trips, { fuel: settings.fuel, parkingFees: settings.parkingFees }), [trips, settings.fuel, settings.parkingFees]);
+  const streak = useMemo(() => streaks(trips), [trips]);
   const topMoney = [...money.groups].sort((a, b) => b.cost - a.cost).slice(0, 5);
   const delta = A.score - P.score;
   const mapFit = { minX: -200, minY: -200, maxX: 8900, maxY: 12100 };
@@ -74,6 +77,18 @@ export default function Insights({ push }) {
   return (
     <div className="screen">
       <div className="topbar"><h1>Insights</h1></div>
+      <button className="cert fade" style={{ width: '100%', textAlign: 'left', marginBottom: 12 }} onClick={() => push('weekly')}>
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <span className="muted" style={{ fontSize: 12.5, fontWeight: 650 }}>YOUR WEEK</span>
+          <ChevronRight size={16} className="muted" />
+        </div>
+        <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.35, marginTop: 4, textWrap: 'balance' }}>{week.trips ? `${week.line}.` : 'No driving this week yet.'}</div>
+      </button>
+      <div className="grid-3" style={{ marginBottom: 16 }}>
+        <button className="hub-tile" style={{ minHeight: 0, padding: 12 }} onClick={() => push('hotspots')}><Flame size={18} color="var(--critical-ink)" /><div className="t" style={{ fontSize: 13 }}>Hotspots</div></button>
+        <button className="hub-tile" style={{ minHeight: 0, padding: 12 }} onClick={() => push('achievements')}><Trophy size={18} color="var(--warning)" /><div className="t" style={{ fontSize: 13 }}>{streak.current}-day streak</div></button>
+        <button className="hub-tile" style={{ minHeight: 0, padding: 12 }} onClick={() => push('ask')}><Sparkles size={18} color="var(--accent)" /><div className="t" style={{ fontSize: 13 }}>Ask AI</div></button>
+      </div>
       <Segmented options={[{ value: 7, label: '7 days' }, { value: 30, label: '30 days' }, { value: 42, label: '6 weeks' }]} value={period} onChange={setPeriod} />
 
       <div className="card fade" style={{ marginTop: 14 }}>

@@ -5,7 +5,7 @@ import { boundsOf, pathD } from '../components/MapView.jsx';
 import { ScoreRing } from '../components/Charts.jsx';
 import { EVENT_META } from '../components/ui.jsx';
 import { fmtDay, fmtDuration, fmtKm, fmtTime } from '../lib/format.js';
-import { fmtINR, tripCost } from '../lib/costs.js';
+import { fmtINR, tripCosts } from '../lib/costs.js';
 
 export const TripThumb = memo(function TripThumb({ samples, size = 76, crash }) {
   const b = boundsOf(samples);
@@ -66,9 +66,9 @@ export default function Trips({ push }) {
       n: w.length,
       d: w.reduce((a, t) => a + t.summary.distance, 0),
       dur: w.reduce((a, t) => a + t.summary.duration, 0),
-      cost: w.reduce((a, t) => a + tripCost(t.summary, settings.fuel).cost, 0),
+      cost: w.reduce((a, t) => a + tripCosts(t, settings.fuel, settings.parkingFees).cost, 0),
     };
-  }, [trips, settings.fuel]);
+  }, [trips, settings.fuel, settings.parkingFees]);
 
   const groups = [];
   for (const t of list.slice(0, limit)) {
@@ -121,7 +121,8 @@ export default function Trips({ push }) {
 }
 
 export function TripRow({ trip, onClick }) {
-  const { placeNameAt, settings } = useApp();
+  const { placeNameAt, settings, drivers } = useApp();
+  const driver = drivers.find((d) => d.id === trip.driver);
   const from = placeNameAt(trip.samples[0]) ?? 'Unknown';
   const to = placeNameAt(trip.samples[trip.samples.length - 1]) ?? 'Roadside';
   const crash = trip.events.some((e) => e.type === 'crash');
@@ -140,7 +141,7 @@ export function TripRow({ trip, onClick }) {
           <ScoreRing value={trip.score} size={32} stroke={3} />
         </div>
         <div className="trip-meta num">
-          {fmtTime(trip.start)} – {fmtTime(trip.end)} · {fmtKm(trip.summary.distance)} · {fmtDuration(trip.summary.duration)} · {fmtINR(tripCost(trip.summary, settings.fuel).cost)}
+          {fmtTime(trip.start)} – {fmtTime(trip.end)} · {fmtKm(trip.summary.distance)} · {fmtDuration(trip.summary.duration)} · {fmtINR(tripCosts(trip, settings.fuel, settings.parkingFees).cost)}
         </div>
         <div className="trip-foot">
           {Object.entries(counts).map(([type, n]) => {
@@ -150,6 +151,8 @@ export function TripRow({ trip, onClick }) {
               <span key={type} className={`badge ${type === 'crash' ? 'crit' : 'warn'}`}><I size={12} />{n > 1 ? `${n} ` : ''}{m.short}</span>
             );
           })}
+          {driver && driver.role !== 'Owner' && <span className="badge" style={{ color: driver.color }}>{driver.name}</span>}
+          {trip.tolls?.length > 0 && <span className="badge">Toll {fmtINR(trip.tolls.reduce((a, x) => a + x.fee, 0))}</span>}
           {trip.summary.night > 60 && <span className="badge"><Moon size={12} />Night</span>}
           {!trip.events.length && <span className="badge good">Smooth drive</span>}
         </div>

@@ -14,7 +14,9 @@ const GROUPS = {
   all: () => true,
   safety: (a) => ['crash', 'harsh_brake', 'harsh_accel', 'overspeed'].includes(a.type),
   geofence: (a) => a.type.startsWith('geofence'),
-  vehicle: (a) => ['ignition_on', 'ignition_off', 'power_cut', 'tamper', 'tow', 'low_battery'].includes(a.type),
+  security: (a) => ['power_cut', 'tamper', 'tow', 'gps_jam', 'unusual_night'].includes(a.type),
+  drivers: (a) => ['curfew', 'driver_speed'].includes(a.type),
+  vehicle: (a) => ['ignition_on', 'ignition_off', 'low_battery'].includes(a.type),
 };
 
 export default function Alerts({ push }) {
@@ -58,7 +60,7 @@ export default function Alerts({ push }) {
       )}
 
       <div className="chips" style={{ marginTop: 14 }}>
-        {[['all', 'All'], ['safety', 'Safety'], ['geofence', 'Geofence'], ['vehicle', 'Vehicle']].map(([k, l]) => (
+        {[['all', 'All'], ['safety', 'Safety'], ['security', 'Theft & tamper'], ['drivers', 'Drivers'], ['geofence', 'Geofence'], ['vehicle', 'Vehicle']].map(([k, l]) => (
           <button key={k} className={`chip ${group === k ? 'on' : ''}`} onClick={() => setGroup(k)}>{l}</button>
         ))}
       </div>

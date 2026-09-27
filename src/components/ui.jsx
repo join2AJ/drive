@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ChevronLeft, Siren, OctagonAlert, Gauge, Zap, LogIn, LogOut, Power, PowerOff, BatteryWarning,
-  ShieldAlert, Truck, Home, Briefcase, Dumbbell, ShoppingBag, Heart, GraduationCap, Plane, MapPin, Mic, Video,
+  ShieldAlert, Truck, SatelliteDish, MoonStar, Clock3, Home, Briefcase, Dumbbell, ShoppingBag, Heart, GraduationCap, Plane, MapPin, Mic, Video,
 } from 'lucide-react';
 
 export const EVENT_META = {
@@ -18,6 +18,10 @@ export const EVENT_META = {
   tamper: { label: 'Device tamper detected', short: 'Tamper', icon: ShieldAlert, tone: 'crit', severity: 2 },
   tow: { label: 'Movement with ignition off', short: 'Towing?', icon: Truck, tone: 'crit', severity: 2 },
   low_battery: { label: 'Low vehicle battery', short: 'Low battery', icon: BatteryWarning, tone: 'warn', severity: 1 },
+  gps_jam: { label: 'GPS jamming suspected', short: 'GPS jammed', icon: SatelliteDish, tone: 'crit', severity: 3 },
+  unusual_night: { label: 'Unusual night movement', short: 'Night move', icon: MoonStar, tone: 'crit', severity: 2 },
+  curfew: { label: 'Curfew broken', short: 'Curfew', icon: Clock3, tone: 'warn', severity: 1 },
+  driver_speed: { label: 'New-driver speed limit', short: 'Over limit', icon: Gauge, tone: 'warn', severity: 1 },
 };
 
 export const PLACE_ICONS = { home: Home, briefcase: Briefcase, dumbbell: Dumbbell, shopping: ShoppingBag, heart: Heart, school: GraduationCap, plane: Plane, pin: MapPin, mic: Mic, video: Video };

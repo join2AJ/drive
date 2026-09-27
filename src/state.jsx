@@ -3,8 +3,10 @@ import { createDemoSource } from './data/source.js';
 import {
   DEFAULT_THRESHOLDS, analyzeTrip, detectEvents, frequentPlaces, geofenceTransitions,
 } from './lib/analytics.js';
-import { places as allPlaces } from './data/cityModel.js';
-import { DEFAULT_FUEL } from './lib/costs.js';
+import { places as allPlaces, tollPlazas, DEFAULT_PARKING_FEES } from './data/cityModel.js';
+import { DEFAULT_FUEL, tollsOnTrip } from './lib/costs.js';
+import { defaultReminders, seedFuelLog } from './lib/paperwork.js';
+import { DEFAULT_DRIVERS, unusualMovement, driverViolations } from './lib/security.js';
 import { sha256, snapshotGps } from './lib/evidence.js';
 
 const Ctx = createContext(null);
@@ -22,6 +24,19 @@ const save = (key, v) => {
   try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* storage unavailable */ }
 };
 
+/** useState that survives reloads (localStorage). `init` may be a function. */
+function usePersistent(key, init) {
+  const [v, setV] = useState(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw != null) return JSON.parse(raw);
+    } catch { /* fall through */ }
+    return typeof init === 'function' ? init() : init;
+  });
+  useEffect(() => save(key, v), [key, v]);
+  return [v, setV];
+}
+
 const DEFAULT_SETTINGS = {
   theme: 'dark',
   notify: { crash: true, harsh: true, overspeed: true, geofence: true, ignition: false, tamper: true },
@@ -34,6 +49,10 @@ const DEFAULT_SETTINGS = {
   fuel: DEFAULT_FUEL,
   // Remembered once, pre-filled into every claim.
   claimProfile: { driverName: 'Arjun Kumar', phone: '+91 98450 67890', licenceNo: '', insurer: '', policyNo: '' },
+  parkingFees: DEFAULT_PARKING_FEES,
+  logbookRule: 'office', // trips to/from Office default to "business"
+  offlineMaps: { bengaluru: 'ready' },
+  autoUpdateMaps: true,
 };
 
 const DEFAULT_CONTROLS = {
@@ -87,7 +106,14 @@ export function AppProvider({ children }) {
     return () => mq.removeEventListener('change', apply);
   }, [settings.theme]);
 
-  const trips = useMemo(() => source.trips.map((t) => analyzeTrip(t, thresholds)), [source, thresholds]);
+  const trips = useMemo(
+    () => source.trips.map((t) => ({
+      ...analyzeTrip(t, thresholds),
+      tolls: tollsOnTrip(t.samples, tollPlazas),
+      parkingKey: t.to && settings.parkingFees?.[t.to] != null ? t.to : null,
+    })),
+    [source, thresholds, settings.parkingFees],
+  );
   const tripById = useMemo(() => Object.fromEntries(trips.map((t) => [t.id, t])), [trips]);
 
   const savedPlaces = useMemo(() => {
@@ -107,10 +133,48 @@ export function AppProvider({ children }) {
 
   const frequent = useMemo(() => frequentPlaces(trips, labelledPlaces), [trips, labelledPlaces]);
 
-  const alerts = useMemo(() => buildAlerts(trips, fences), [trips, fences]);
+
+  // ---------------- Paperwork, money, people ----------------
+  const [reminders, setReminders] = usePersistent('drive.reminders', () => defaultReminders(Date.now(), source.vehicle.odometerKm));
+  const [fuelLog, setFuelLog] = usePersistent('drive.fuellog', () => seedFuelLog(source.trips.map((t) => analyzeTrip(t)), source.vehicle.odometerKm));
+  const [tripTags, setTripTags] = usePersistent('drive.triptags', {});
+  const [drivers, setDrivers] = usePersistent('drive.drivers', DEFAULT_DRIVERS);
+  const [parking, setParking] = usePersistent('drive.parking', { note: '', timerUntil: null });
+  const [stolen, setStolen] = usePersistent('drive.stolen', { active: false });
+  const [share, setShare] = useState(null);
+  const odometerKm = source.vehicle.odometerKm;
+  const alerts = useMemo(() => buildAlerts(trips, fences, drivers), [trips, fences, drivers]);
+
+  // ---------------- Connectivity ----------------
+  // Phone: real navigator.onLine, plus a demo switch. Tracker: demo switch for "no 4G here".
+  const [browserOnline, setBrowserOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+  const [demoPhoneOffline, setDemoPhoneOffline] = useState(false);
+  const [trackerOnline, setTrackerOnline] = useState(true);
+  useEffect(() => {
+    const on = () => setBrowserOnline(true);
+    const off = () => setBrowserOnline(false);
+    addEventListener('online', on);
+    addEventListener('offline', off);
+    return () => { removeEventListener('online', on); removeEventListener('offline', off); };
+  }, []);
+  const phoneOnline = browserOnline && !demoPhoneOffline;
+  const network = { phoneOnline, trackerOnline, setTrackerOnline, demoPhoneOffline, setDemoPhoneOffline, connected: phoneOnline && trackerOnline };
 
   // ---------------- Live vehicle ----------------
-  const live = useLiveVehicle(source.live, thresholds);
+  const live = useLiveVehicle(source.live, thresholds, network.connected, (n) => setToast(`Synced ${n} GPS points recorded while offline`));
+
+  // Share-my-ride stops by itself on arrival.
+  const remainingM = useMemo(() => {
+    let d = 0;
+    for (let i = 1; i < live.ahead.length; i += 1) d += Math.hypot(live.ahead[i].x - live.ahead[i - 1].x, live.ahead[i].y - live.ahead[i - 1].y);
+    return d;
+  }, [live.ahead]);
+  useEffect(() => {
+    if (share?.active && share.stopOnArrival && remainingM < 60) {
+      setShare((sh) => ({ ...sh, active: false, endedAt: Date.now(), endReason: 'arrived' }));
+      setToast('Arrived — ride sharing stopped automatically');
+    }
+  }, [remainingM, share]);
   const controls = useVehicleControls(live, immobilized, setImmobilized, setToast);
 
   // ---------------- Media & incidents ----------------
@@ -194,11 +258,13 @@ export function AppProvider({ children }) {
     settings, setSettings, fences, setFences, frequent, alerts, placeNameAt, placeAt, savedPlaces,
     live, toast, setToast, immobilized, setImmobilized, controls,
     media, deleteMedia, incidents, createIncident, updateIncident,
+    reminders, setReminders, fuelLog, setFuelLog, tripTags, setTripTags, drivers, setDrivers,
+    parking, setParking, stolen, setStolen, share, setShare, remainingM, odometerKm, network,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
-function buildAlerts(trips, fences) {
+function buildAlerts(trips, fences, drivers = []) {
   const out = [];
   const now = Date.now();
   for (const t of trips) {
@@ -215,11 +281,20 @@ function buildAlerts(trips, fences) {
   const home = trips[0].samples[0];
   out.push({ type: 'power_cut', t: now - 9 * 86_400_000 - 3 * 3_600_000, x: home.x, y: home.y, id: 'pc1', detail: 'Main 12 V feed lost for 42 s · running on backup battery. Restored.' });
   out.push({ type: 'low_battery', t: now - 12 * 86_400_000 - 5 * 3_600_000, x: home.x, y: home.y, id: 'lb1', detail: 'Vehicle battery dropped to 11.6 V while parked overnight.' });
+  // GNSS lost while 4G stayed up and the car was parked: classic jammer signature.
+  out.push({ type: 'gps_jam', t: now - 6 * 86_400_000 - 21.8 * 3_600_000, x: home.x + 40, y: home.y + 25, id: 'gj1', detail: 'GPS jammed for 4 min at 2:12 AM while 4G stayed connected · motion sensor quiet · no movement' });
+  unusualMovement(trips).forEach((u, k) => out.push({ ...u, id: `un${k}` }));
+  // New-driver rule breaches (speed / curfew).
+  for (const t of trips) {
+    const d = drivers.find((x) => x.id === t.driver);
+    if (!d?.rules?.enabled) continue;
+    driverViolations(t, d.rules).forEach((v, k) => out.push({ ...v, type: v.type === 'curfew' ? 'curfew' : 'driver_speed', driver: d.name, tripId: t.id, id: `${t.id}-dv${k}`, detail: `${d.name}: ${v.detail}` }));
+  }
   return out.sort((a, b) => b.t - a.t);
 }
 
 /** Streams the live trip at 1 Hz, loops it, and runs crash detection on the rolling window. */
-function useLiveVehicle(liveTrip, thresholds) {
+function useLiveVehicle(liveTrip, thresholds, connected = true, onSync) {
   const [samples, setSamples] = useState(liveTrip.samples);
   const startIdx = Math.min(300, samples.length - 1);
   const [idx, setIdx] = useState(startIdx);
@@ -257,11 +332,26 @@ function useLiveVehicle(liveTrip, thresholds) {
     }
   }, [idx, samples, thresholds]);
 
-  const cur = samples[idx];
-  const prev = samples[Math.max(0, idx - 3)];
+  // Store-and-forward: while the link is down the tracker keeps logging (idx moves) but the
+  // app only has what it last received (syncedIdx). On reconnect the backlog arrives at once.
+  const [syncedIdx, setSyncedIdx] = useState(idx);
+  const syncRef = useRef(onSync);
+  syncRef.current = onSync;
+  useEffect(() => {
+    if (idx < syncedIdx) setSyncedIdx(idx);
+    else if (connected && syncedIdx !== idx) {
+      if (idx - syncedIdx > 3) syncRef.current?.(idx - syncedIdx);
+      setSyncedIdx(idx);
+    }
+  }, [idx, connected, syncedIdx]);
+  const vi = connected ? idx : Math.min(syncedIdx, idx);
+
+  const cur = samples[vi];
+  const prev = samples[Math.max(0, vi - 3)];
   const heading = Math.atan2(cur.y - prev.y, cur.x - prev.x) || 0;
-  const trail = samples.slice(Math.max(0, idx - 600), idx + 1);
-  const ahead = samples.slice(idx);
+  const trail = samples.slice(Math.max(0, vi - 600), vi + 1);
+  const ahead = samples.slice(vi);
+  const buffered = idx - vi;
 
   /** Demo: inject a collision profile into the upcoming stream (speed up, then ~80 → 4 km/h in 2 s). */
   const simulateImpact = useCallback(() => {
@@ -305,7 +395,7 @@ function useLiveVehicle(liveTrip, thresholds) {
   }, [liveTrip, startIdx]);
 
   return {
-    cur, heading, trail, ahead, idx, samples, crash, setCrash, dismissCrash, simulateImpact, resume,
+    cur, heading, trail, ahead, idx: vi, deviceIdx: idx, buffered, samples, crash, setCrash, dismissCrash, simulateImpact, resume,
     tripStart: liveTrip.samples[0].t + offset.current,
     now: cur.t + offset.current,
     stopped: paused && !crash,

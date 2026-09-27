@@ -121,13 +121,17 @@ export default function MapView({ fit, fitKey, follow, children, controls = true
 
   const onPointerDown = (e) => {
     if (!interactive) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    // Capture only once the finger actually drags, so taps still reach overlay shapes.
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
     gesture.current = null;
   };
   const onPointerMove = (e) => {
     if (!pointers.current.has(e.pointerId)) return;
     const prev = pointers.current.get(e.pointerId);
+    if (!prev.captured && Math.hypot(e.clientX - prev.x0, e.clientY - prev.y0) > 4) {
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
+      prev.captured = true;
+    }
     const pts = [...pointers.current.values()];
     if (pts.length === 1) {
       const dx = e.clientX - prev.x;
@@ -146,7 +150,7 @@ export default function MapView({ fit, fitKey, follow, children, controls = true
       const d1 = Math.hypot(e.clientX - other.x, e.clientY - other.y);
       if (d0 > 0 && d1 > 0) zoom(d0 / d1);
     }
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    pointers.current.set(e.pointerId, { ...prev, x: e.clientX, y: e.clientY });
   };
   const onPointerUp = (e) => pointers.current.delete(e.pointerId);
   const onWheel = (e) => {

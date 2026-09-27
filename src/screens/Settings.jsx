@@ -1,8 +1,15 @@
 import { useMemo, useState } from 'react';
-import { Car, Cpu, Phone, Plus, RotateCcw, Server, Hexagon } from 'lucide-react';
+import { Car, Cpu, Phone, Plus, RotateCcw, Server, Hexagon, Map as MapIcon, Download, Check, WifiOff, SatelliteDish } from 'lucide-react';
 import { useApp } from '../state.jsx';
 import { NavBar, SectionTitle, Segmented, Toggle, Sheet, EVENT_META } from '../components/ui.jsx';
 import { DEFAULT_THRESHOLDS } from '../lib/analytics.js';
+
+const OFFLINE_PACKS = [
+  { key: 'bengaluru', name: 'Bengaluru city', size: 38, detail: 'Streets, speed limits, landmarks' },
+  { key: 'karnataka', name: 'Karnataka highways', size: 124, detail: 'NH & state highways, toll plazas' },
+  { key: 'mysuru', name: 'Mysuru', size: 12, detail: 'Streets and landmarks' },
+  { key: 'chennai', name: 'Chennai', size: 51, detail: 'Streets, speed limits, landmarks' },
+];
 
 const FUEL_PRESETS = {
   Petrol: { pricePerL: 103.5, kmPerL: 14, idleLph: 0.8 },
@@ -25,7 +32,22 @@ function SliderRow({ label, value, min, max, step = 1, unit, onChange, hint }) {
 }
 
 export default function Settings({ pop }) {
-  const { vehicle, thresholds, setThresholds, trips, settings, setSettings, fences, setFences, setToast } = useApp();
+  const { vehicle, thresholds, setThresholds, trips, settings, setSettings, fences, setFences, setToast, network, live } = useApp();
+  const [downloading, setDownloading] = useState({});
+  const packs = settings.offlineMaps ?? {};
+  const downloadPack = (p) => {
+    setDownloading((d) => ({ ...d, [p.key]: 0 }));
+    let pct = 0;
+    const id = setInterval(() => {
+      pct += 8 + Math.random() * 14;
+      if (pct >= 100) {
+        clearInterval(id);
+        setDownloading((d) => { const n = { ...d }; delete n[p.key]; return n; });
+        setSettings((st) => ({ ...st, offlineMaps: { ...(st.offlineMaps ?? {}), [p.key]: 'ready' } }));
+        setToast(`${p.name} map ready offline`);
+      } else setDownloading((d) => ({ ...d, [p.key]: pct }));
+    }, 350);
+  };
   const [sheet, setSheet] = useState(null);
   const [api, setApi] = useState({ url: '', device: '', token: '' });
   const set = (k) => (v) => setThresholds({ ...thresholds, [k]: v });
@@ -152,6 +174,58 @@ export default function Settings({ pop }) {
         ))}
         <SliderRow label="SOS countdown before auto-alert" value={settings.sosCountdown} min={10} max={60} step={5} unit=" s" onChange={(v) => setSettings({ ...settings, sosCountdown: v })} />
         <button className="list-item" onClick={() => setToast('Pick a contact from your address book')}><div className="glyph"><Plus size={18} /></div><div className="title" style={{ color: 'var(--accent)' }}>Add contact</div></button>
+      </div>
+
+      <SectionTitle>Offline maps</SectionTitle>
+      <div className="list">
+        <div className="list-item plain" style={{ alignItems: 'flex-start' }}>
+          <MapIcon size={18} className="muted" style={{ marginTop: 2, flex: 'none' }} />
+          <div className="muted" style={{ fontSize: 12.5 }}>Downloaded regions work with no internet. GPS needs no internet at all, so your position, trips and alerts keep working; the car's tracker stores points and uploads them when it's back in coverage.</div>
+        </div>
+        {OFFLINE_PACKS.map((p) => {
+          const ready = packs[p.key] === 'ready';
+          const pct = downloading[p.key];
+          return (
+            <div key={p.key} className="list-item">
+              <div className={`glyph ${ready ? 'good' : ''}`}>{ready ? <Check size={18} /> : <MapIcon size={18} />}</div>
+              <div className="grow">
+                <div className="title">{p.name}</div>
+                <div className="meta num">{p.size} MB · {p.detail}</div>
+                {pct != null && <div className="progress" style={{ marginTop: 6 }}><div style={{ width: `${pct}%` }} /></div>}
+              </div>
+              {ready ? (
+                <button className="btn small" onClick={() => setSettings({ ...settings, offlineMaps: { ...packs, [p.key]: undefined } })}>Remove</button>
+              ) : (
+                <button className="btn small" disabled={pct != null} onClick={() => downloadPack(p)}><Download size={15} /> {pct != null ? `${Math.round(pct)}%` : 'Get'}</button>
+              )}
+            </div>
+          );
+        })}
+        <div className="list-item plain">
+          <div className="grow"><div className="title" style={{ fontSize: 14.5 }}>Update maps on Wi-Fi only</div><div className="meta">Monthly road and speed-limit updates</div></div>
+          <Toggle on={settings.autoUpdateMaps !== false} label="Update maps on Wi-Fi" onChange={(v) => setSettings({ ...settings, autoUpdateMaps: v })} />
+        </div>
+      </div>
+
+      <SectionTitle>Test offline behaviour</SectionTitle>
+      <div className="list">
+        <div className="list-item plain">
+          <WifiOff size={18} className="muted" />
+          <div className="grow"><div className="title" style={{ fontSize: 14.5 }}>Phone offline</div><div className="meta">Pretend this phone has no internet</div></div>
+          <Toggle on={network.demoPhoneOffline} label="Phone offline" onChange={network.setDemoPhoneOffline} />
+        </div>
+        <div className="list-item plain">
+          <SatelliteDish size={18} className="muted" />
+          <div className="grow"><div className="title" style={{ fontSize: 14.5 }}>Car has no mobile signal</div><div className="meta">{network.trackerOnline ? 'e.g. a basement or tunnel' : `${live.buffered} GPS points stored in the tracker`}</div></div>
+          <Toggle on={!network.trackerOnline} label="Car has no signal" onChange={(v) => network.setTrackerOnline(!v)} />
+        </div>
+      </div>
+
+      <SectionTitle>Parking fees</SectionTitle>
+      <div className="list">
+        {[['mall', 'Phoenix Mall'], ['airport', 'Airport']].map(([k, l]) => (
+          <SliderRow key={k} label={l} value={settings.parkingFees?.[k] ?? 0} min={0} max={500} step={10} unit=" ₹" onChange={(v) => setSettings({ ...settings, parkingFees: { ...settings.parkingFees, [k]: v } })} hint="Added to the cost of every trip that ends here" />
+        ))}
       </div>
 
       <SectionTitle>Appearance</SectionTitle>

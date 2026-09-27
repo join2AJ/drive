@@ -184,13 +184,17 @@ export function simulateDrive({ path, start, seed, speedFactor = 1, inject = [] 
 
 const DAY = 86_400_000;
 
+// Who drives: Arjun (owner) commutes; Priya does school runs and Sundays; Rohan (19, new
+// driver) takes the car on Saturdays and some Friday nights.
 function legsForDay(dow, dayIndex, rand) {
   const L = [];
   const jitter = (h, spread) => h + (rand() - 0.5) * spread;
+  const R = { driver: 'rohan' };
+  const P = { driver: 'priya' };
   if (dow >= 1 && dow <= 5) {
     if (dow === 2 || dow === 4) {
-      L.push(['home', 'school', jitter(7.75, 0.3)]);
-      L.push(['school', 'office', null, 8]);
+      L.push(['home', 'school', jitter(7.75, 0.3), null, P]);
+      L.push(['school', 'office', null, 8, P]);
     } else {
       L.push(['home', 'office', jitter(8.7, 0.7)]);
     }
@@ -199,20 +203,29 @@ function legsForDay(dow, dayIndex, rand) {
       L.push(['mall', 'office', null, 55]);
     }
     L.push(['office', 'home', jitter(18.5, 1.1)]);
-    if ((dow === 1 || dow === 3 || dow === 5) && rand() < 0.8) {
+    if ((dow === 1 || dow === 3) && rand() < 0.8) {
       L.push(['home', 'gym', jitter(20.0, 0.5)]);
       L.push(['gym', 'home', null, 70]);
     }
+    if (dow === 5 && rand() < 0.6) {
+      // Friday night out — back after the 10 PM curfew.
+      L.push(['home', 'mall', jitter(21.6, 0.3), null, R]);
+      L.push(['mall', 'home', null, 85 + rand() * 30, R]);
+    }
   } else if (dow === 6) {
-    L.push(['home', 'mystery', jitter(7.1, 0.4)]);
-    L.push(['mystery', 'home', null, 95]);
+    L.push(['home', 'mystery', jitter(7.1, 0.4), null, R]);
+    L.push(['mystery', 'home', null, 95, R]);
     if (rand() < 0.75) {
       L.push(['home', 'mall', jitter(17.2, 1.0)]);
       L.push(['mall', 'home', null, 150]);
     }
   } else {
-    L.push(['home', 'parents', jitter(11.0, 1.0)]);
-    L.push(['parents', 'home', null, 300 + rand() * 60]);
+    L.push(['home', 'parents', jitter(11.0, 1.0), null, P]);
+    L.push(['parents', 'home', null, 300 + rand() * 60, P]);
+  }
+  if (dayIndex === 33) {
+    // 2 AM drive: unusual for this car, and outside the new driver's curfew.
+    L.unshift(['home', 'mall', 1.9, null, R], ['mall', 'home', null, 25, R]);
   }
   if (dayIndex === 19) {
     // A late-night airport run with a heavier right foot.
@@ -257,18 +270,25 @@ export function generateHistory(now = Date.now(), days = 42) {
       const h = new Date(start).getHours() + new Date(start).getMinutes() / 60;
       const rush = dow >= 1 && dow <= 5 && ((h >= 8.75 && h < 10) || (h >= 17.75 && h < 19.5));
       const traffic = rush ? range(rand, 0.68, 0.8) : 1;
-      const speedFactor = opts.speedFactor ?? (aggressive ? range(rand, 1.12, 1.2) : range(rand, 0.92, 1.06)) * traffic;
+      const driver = opts.driver ?? 'arjun';
+      const young = driver === 'rohan';
+      const base = aggressive || (young && rand() < 0.5) ? range(rand, 1.12, 1.22) : range(rand, 0.92, 1.06);
+      const speedFactor = opts.speedFactor ?? base * traffic;
       const inject = [];
       if (opts.crash) inject.push({ type: 'crash', at: 0.35 });
       else {
-        if (rand() < 0.13) inject.push({ type: 'harsh_brake', at: range(rand, 0.2, 0.8) });
-        if (rand() < 0.09) inject.push({ type: 'harsh_accel', at: range(rand, 0.1, 0.6) });
+        // Commutes cross the Hebbal flyover, where a queue regularly forces hard stops.
+        const commute = (from === 'home' && to === 'office') || (from === 'office' && to === 'home');
+        if (commute && rand() < 0.3) inject.push({ type: 'harsh_brake', at: from === 'home' ? 0.31 : 0.63 });
+        else if (rand() < (young ? 0.3 : 0.1)) inject.push({ type: 'harsh_brake', at: range(rand, 0.2, 0.8) });
+        if (rand() < (young ? 0.25 : 0.07)) inject.push({ type: 'harsh_accel', at: range(rand, 0.1, 0.6) });
       }
       const sim = simulateDrive({ path, start, seed: Math.floor(rand() * 1e9), speedFactor, inject });
       const end = sim.samples[sim.samples.length - 1].t;
       lastArrival = end;
       trips.push({
         id: `T${String(++tripSeq).padStart(4, '0')}`,
+        driver,
         from: crashDay && opts.crash ? 'mall' : from,
         to: opts.crash ? null : to,
         start,

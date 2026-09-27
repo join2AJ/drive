@@ -22,9 +22,12 @@ export function fmtDay(ts, now = Date.now()) {
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
   const diff = Math.floor((start.getTime() - d.getTime()) / DAY) + 1;
-  if (d >= start) return 'Today';
+  if (d >= start && d.getTime() < start.getTime() + DAY) return 'Today';
+  if (d >= start && d.getTime() < start.getTime() + 2 * DAY) return 'Tomorrow';
   if (diff === 1) return 'Yesterday';
-  return d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+  const opts = { weekday: 'short', day: 'numeric', month: 'short' };
+  if (d.getFullYear() !== start.getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString([], opts);
 }
 
 export function fmtAgo(ts, now = Date.now()) {

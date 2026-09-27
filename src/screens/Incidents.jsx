@@ -1,12 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Siren, ShieldCheck, Video, Mic, Camera, ChevronRight, Copy, Share2, Download, Send, Lock, Plus, Minus, Square, FileText, History, MapPin,
+  Siren, ShieldCheck, Video, Mic, Sparkles, Camera, ChevronRight, Copy, Share2, Download, Send, Lock, Plus, Minus, Square, FileText, History, MapPin,
 } from 'lucide-react';
 import { useApp } from '../state.jsx';
 import { NavBar, SectionTitle, Segmented, Sheet } from '../components/ui.jsx';
 import MapView, { Route, Pin, boundsOf } from '../components/MapView.jsx';
 import { INCIDENT_TYPES, DAMAGE_ZONES, STATEMENT_PROMPTS, compressImage } from '../lib/evidence.js';
-import { roadAt } from '../data/cityModel.js';
+import { roadAt, describePoint } from '../data/cityModel.js';
+import { streamAI } from '../lib/aiClient.js';
+import { draftStatementLocally } from '../lib/ask.js';
+
+// Demo transcripts of the tracker's cabin-audio clip. In production these come from a
+// speech-to-text service run on the uploaded audio.
+const CABIN_TRANSCRIPTS = {
+  collision: '[engine noise] "…okay, left at the junction." [tyres screech] [loud bang] "Is everyone okay? He braked suddenly right in front of us — no brake lights."',
+  hit_run: '"Hey — he scraped us! White Swift… K A zero five… he\'s not stopping." [horn]',
+  road_rage: '[horn, repeatedly] "Just stay calm, don\'t open the window." [shouting outside]',
+  other: '[road noise] [music playing quietly] [indicator ticking]',
+};
 import { formatLatLng } from '../lib/geo.js';
 import { fmtClock, fmtDay, fmtDuration, fmtTime } from '../lib/format.js';
 
@@ -160,8 +171,37 @@ function useVoiceRecorder(onDone) {
   const [secs, setSecs] = useState(0);
   const chunks = useRef([]);
   const durRef = useRef(0);
+  const speech = useRef(null);
+  const transcript = useRef('');
+  const [liveText, setLiveText] = useState('');
+  const startSpeech = () => {
+    // On-device speech-to-text where the browser offers it (Chrome / Android WebView, Safari).
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    transcript.current = '';
+    setLiveText('');
+    if (!SR) return;
+    try {
+      const r = new SR();
+      r.lang = navigator.language || 'en-IN';
+      r.continuous = true;
+      r.interimResults = true;
+      r.onresult = (e) => {
+        let finalText = '';
+        let interim = '';
+        for (let i = 0; i < e.results.length; i++) {
+          if (e.results[i].isFinal) finalText += e.results[i][0].transcript;
+          else interim += e.results[i][0].transcript;
+        }
+        transcript.current = finalText;
+        setLiveText(`${finalText}${interim}`);
+      };
+      r.start();
+      speech.current = r;
+    } catch { /* speech recognition unavailable */ }
+  };
   const start = async () => {
     setSecs(0);
+    startSpeech();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mr = new MediaRecorder(stream);
@@ -171,7 +211,7 @@ function useVoiceRecorder(onDone) {
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(chunks.current, { type: mr.mimeType });
         const r = new FileReader();
-        r.onload = () => onDone({ dataUrl: r.result, simulated: false, duration: durRef.current });
+        r.onload = () => onDone({ dataUrl: r.result, simulated: false, duration: durRef.current, transcript: transcript.current.trim() });
         r.readAsDataURL(blob);
       };
       mr.start();
@@ -184,8 +224,9 @@ function useVoiceRecorder(onDone) {
   const stop = () => {
     const dur = Math.max(1, Math.round((Date.now() - rec.t0) / 1000));
     durRef.current = dur;
-    if (rec.mr) rec.mr.stop();
-    else onDone({ dataUrl: null, simulated: true, duration: dur });
+    try { speech.current?.stop(); } catch { /* already stopped */ }
+    if (rec.mr) setTimeout(() => rec.mr.stop(), 400); // let the last words finish transcribing
+    else onDone({ dataUrl: null, simulated: true, duration: dur, transcript: transcript.current.trim() });
     setRec(null);
     return dur;
   };
@@ -194,7 +235,7 @@ function useVoiceRecorder(onDone) {
     const id = setInterval(() => setSecs(Math.round((Date.now() - rec.t0) / 1000)), 250);
     return () => clearInterval(id);
   }, [rec]);
-  return { recording: !!rec, secs, start, stop };
+  return { recording: !!rec, secs, start, stop, liveText };
 }
 
 export function buildClaimText(inc, { vehicle, profile }) {
@@ -238,11 +279,12 @@ export function buildClaimText(inc, { vehicle, profile }) {
 }
 
 export function IncidentCase({ id, pop, push }) {
-  const { incidents, updateIncident, media, vehicle, settings, setSettings, setToast, alerts } = useApp();
+  const { incidents, updateIncident, media, vehicle, settings, setSettings, setToast, alerts, network } = useApp();
   const inc = incidents.find((i) => i.id === id);
   const [sheet, setSheet] = useState(null);
   const [addendum, setAddendum] = useState('');
   const [savedAt, setSavedAt] = useState(null);
+  const [drafting, setDrafting] = useState(false);
   const fileRef = useRef();
   const voice = useVoiceRecorder((res) => {
     updateIncident(id, (i) => ({ ...i, details: { ...i.details, voice: [...(i.details.voice ?? []), { t: Date.now(), ...res }] } }), 'Voice statement recorded and sealed');
@@ -255,6 +297,38 @@ export function IncidentCase({ id, pop, push }) {
   const evidence = media.filter((m) => m.incidentId === inc.id);
   const crash = inc.autoKey === 'auto-crash' ? alerts.find((a) => a.type === 'crash') : null;
   const withImpact = crash ? { ...inc, impact: crash } : inc;
+  const cabinTranscript = evidence.some((m) => m.kind === 'audio') ? CABIN_TRANSCRIPTS[inc.type] ?? CABIN_TRANSCRIPTS.other : '';
+  const draftWithAI = async () => {
+    setDrafting(true);
+    const road = roadAt(inc.location)?.name ?? 'the road';
+    const transcript = [cabinTranscript, ...(d.voice ?? []).map((v) => v.transcript).filter(Boolean)].filter(Boolean).join('\n');
+    const facts = {
+      when: new Date(inc.t).toString(),
+      place: `${describePoint(inc.location)} (${road})`,
+      coordinates: formatLatLng(inc.location.x, inc.location.y),
+      speedJustBeforeKmh: Math.round(withImpact.impact?.fromKmh ?? inc.speedAt ?? 0),
+      impact: withImpact.impact ? { fromKmh: Math.round(withImpact.impact.fromKmh), toKmh: Math.round(withImpact.impact.toKmh), seconds: withImpact.impact.durationSec, gForce: +withImpact.impact.gforce.toFixed(2) } : null,
+      lightConditions: new Date(inc.t).getHours() >= 6 && new Date(inc.t).getHours() < 18 ? 'daylight' : 'dark',
+      otherVehicle: d.otherPlate || null,
+      damage: d.damage ?? [],
+      injuries: d.injuries ?? 'None',
+      vehicle: `${vehicle.name} ${vehicle.plate}`,
+    };
+    let text = '';
+    let source = 'ai';
+    try {
+      if (!network.phoneOnline) throw new Error('offline');
+      text = await streamAI({ mode: 'draft', facts, transcript, notes: d.statement ?? '', typeLabel: typeLabel(inc.type) }, (t) => setD('statement', `${d.statement ? `${d.statement.trimEnd()}\n\n` : ''}${t}`));
+    } catch {
+      source = 'phone';
+      const where = describePoint(inc.location);
+      text = draftStatementLocally(withImpact, { road: where === road ? road : `${where}, ${road}`, transcript, typeLabel: typeLabel(inc.type) });
+      setD('statement', `${d.statement ? `${d.statement.trimEnd()}\n\n` : ''}${text}`);
+    }
+    updateIncident(id, {}, source === 'ai' ? 'AI draft of statement added (review before sending)' : 'Template draft of statement added (offline)');
+    setToast(source === 'ai' ? 'Draft added — read it and fix anything that’s wrong' : network.phoneOnline ? 'AI unavailable — added a template draft to edit' : 'Offline — added a template draft to edit');
+    setDrafting(false);
+  };
 
   const setD = (k, v) => {
     updateIncident(id, (i) => ({ ...i, details: { ...i.details, [k]: v } }));
@@ -376,12 +450,25 @@ export function IncidentCase({ id, pop, push }) {
             </button>
           )}
         </div>
+        {voice.recording && voice.liveText && <div className="muted" style={{ fontSize: 13, marginTop: 8, fontStyle: 'italic' }}>“{voice.liveText}”</div>}
         {(d.voice ?? []).map((v, i) => (
-          <div key={i} className="row" style={{ marginTop: 10, gap: 8 }}>
-            <Lock size={13} className="muted" />
-            {v.dataUrl ? <audio controls src={v.dataUrl} style={{ width: '100%', height: 36 }} /> : <span className="muted" style={{ fontSize: 13 }}>Voice statement · {v.duration}s (demo: microphone unavailable)</span>}
+          <div key={i} style={{ marginTop: 10 }}>
+            <div className="row" style={{ gap: 8 }}>
+              <Lock size={13} className="muted" />
+              {v.dataUrl ? <audio controls src={v.dataUrl} style={{ width: '100%', height: 36 }} /> : <span className="muted" style={{ fontSize: 13 }}>Voice statement · {v.duration}s (demo: microphone unavailable)</span>}
+            </div>
+            {v.transcript && <div className="ink2" style={{ fontSize: 12.5, marginTop: 4 }}>Transcript: “{v.transcript}”</div>}
           </div>
         ))}
+        {!locked && (
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--hairline)' }}>
+            <button className="btn" onClick={draftWithAI} disabled={drafting}>
+              {drafting ? <span className="spinner" /> : <Sparkles size={17} />} {drafting ? 'Writing a first draft…' : 'Draft my statement with AI'}
+            </button>
+            <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>Uses the sealed GPS facts, the cabin-audio transcript and anything you've written. You review and edit it before it goes anywhere.</div>
+            {cabinTranscript && <div className="ink2" style={{ fontSize: 12.5, marginTop: 8 }}><b>Cabin audio transcript{inc.source === 'auto' ? '' : ''}:</b> “{cabinTranscript}”</div>}
+          </div>
+        )}
       </div>
 
       <SectionTitle>Other party</SectionTitle>

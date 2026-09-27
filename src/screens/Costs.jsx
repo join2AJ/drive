@@ -22,7 +22,7 @@ export default function Costs({ pop, push, by: initialBy = 'destination' }) {
 
   const since = Date.now() - period * 86_400_000;
   const cur = useMemo(() => trips.filter((t) => t.start >= since), [trips, since]);
-  const { groups, total } = useMemo(() => costBreakdown(cur, { by, fuel, nameAt: placeNameAt }), [cur, by, fuel, placeNameAt]);
+  const { groups, total } = useMemo(() => costBreakdown(cur, { by, fuel, nameAt: placeNameAt, parkingFees: settings.parkingFees }), [cur, by, fuel, placeNameAt, settings.parkingFees]);
   const sorted = [...groups].sort((a, b) => (sort === 'visits' ? b.visits - a.visits : sort === 'distance' ? b.distance - a.distance : b.cost - a.cost));
   const km = cur.reduce((a, t) => a + t.summary.distance, 0) / 1000;
   const litres = groups.reduce((a, g) => a + g.litres, 0);
@@ -46,6 +46,9 @@ export default function Costs({ pop, push, by: initialBy = 'destination' }) {
         <div className="row" style={{ marginTop: 12, gap: 8, fontSize: 12.5 }}>
           <Timer size={14} className="muted" />
           <span className="ink2">Idling burnt <b className="num">{fmtINR(idle)}</b> ({total ? Math.round((idle / total) * 100) : 0}%) at signals and in traffic.</span>
+        </div>
+        <div className="row" style={{ marginTop: 6, gap: 8, fontSize: 12.5 }}>
+          <span className="ink2 num">Fuel {fmtINR(groups.reduce((a, g) => a + g.fuel, 0))} · FASTag tolls {fmtINR(groups.reduce((a, g) => a + g.toll, 0))} · parking {fmtINR(groups.reduce((a, g) => a + g.parking, 0))}</span>
         </div>
       </div>
 

@@ -5,6 +5,22 @@
 [build.environment]
   NODE_VERSION = "22"
 
+[functions]
+  node_bundler = "esbuild"
+
+# AI assistant → Netlify function (must come before the SPA fallback).
+[[redirects]]
+  from = "/api/ask"
+  to = "/.netlify/functions/ask"
+  status = 200
+  force = true
+
+# Service worker and manifest must never be served stale.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
 # Single-page app: serve index.html for any deep link.
 [[redirects]]
   from = "/*"
