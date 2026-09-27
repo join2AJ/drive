@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from 'react';
-import { ArrowRight, Moon } from 'lucide-react';
+import { ArrowRight, Moon, Timer } from 'lucide-react';
 import { useApp } from '../state.jsx';
 import { boundsOf, pathD } from '../components/MapView.jsx';
 import { ScoreRing } from '../components/Charts.jsx';
@@ -81,7 +81,7 @@ export default function Trips({ push }) {
 
   return (
     <div className="screen">
-      <div className="topbar"><h1>Trips</h1></div>
+      <div className="topbar"><h1>Trips</h1><button className="btn small" onClick={() => push('activity')}><Timer size={15} /> Stops</button></div>
 
       <div className="card fade" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, textAlign: 'center', padding: '14px 8px' }}>
         {[

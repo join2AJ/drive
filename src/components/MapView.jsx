@@ -1,6 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Minus, Plus, LocateFixed } from 'lucide-react';
 import { city } from '../data/cityModel.js';
+import { driveZone } from '../lib/geofence.js';
 
 // Lightweight vector map rendered in SVG. It draws the road network as a basemap and
 // overlays routes, markers, geofences and the live vehicle. Supports drag, pinch and wheel
@@ -76,7 +77,7 @@ export function pathD(points, step = 1) {
  *  follow     – {x,y} point to keep centered (live mode) unless the user has panned
  *  children   – render prop (k) => overlay SVG; k = metres per CSS pixel
  */
-export default function MapView({ fit, fitKey, follow, children, controls = true, detail = true, interactive = true, style, className = '', controlsTop = 12 }) {
+export default function MapView({ fit, fitKey, follow, children, controls = true, detail = true, interactive = true, style, className = '', controlsTop = 12, onMapClick }) {
   const ref = useRef(null);
   const [size, setSize] = useState({ w: 360, h: 300 });
   const [view, setView] = useState(null);
@@ -152,7 +153,18 @@ export default function MapView({ fit, fitKey, follow, children, controls = true
     }
     pointers.current.set(e.pointerId, { ...prev, x: e.clientX, y: e.clientY });
   };
-  const onPointerUp = (e) => pointers.current.delete(e.pointerId);
+  const onPointerUp = (e) => {
+    const p = pointers.current.get(e.pointerId);
+    pointers.current.delete(e.pointerId);
+    // A tap (no drag) reports map coordinates in metres.
+    if (onMapClick && p && !p.captured && e.type === 'pointerup') {
+      const r = ref.current.getBoundingClientRect();
+      const px = e.clientX - r.left;
+      const py = e.clientY - r.top;
+      const scale = Math.max(v.vw / size.w, (v.vw / aspect) / size.h); // preserveAspectRatio "slice"
+      onMapClick({ x: v.cx + (px - size.w / 2) * scale, y: v.cy + (py - size.h / 2) * scale });
+    }
+  };
   const onWheel = (e) => {
     if (!interactive) return;
     const r = ref.current.getBoundingClientRect();
@@ -220,13 +232,49 @@ export function Vehicle({ x, y, heading = 0, k, color = 'var(--accent)', pulse =
   );
 }
 
-export function Fence({ x, y, r, k, label, active = true }) {
+export function Fence({ x, y, r, k, label, active = true, f, color = 'var(--violet)', editing = false, compact = false }) {
+  // Accepts either a full fence object (`f`) or the old circle props.
+  const fence = f ?? { type: 'circle', x, y, radius: r, name: label };
+  const name = label ?? fence.name;
+  const common = { fill: color, fillOpacity: 0.1, stroke: color, strokeWidth: 1.5 * k, strokeDasharray: `${6 * k} ${4 * k}` };
+  let shape;
+  let top = { x: fence.x, y: fence.y };
+  if (fence.type === 'polygon') {
+    const pts = fence.points ?? [];
+    shape = (
+      <>
+        {pts.length >= 3 && <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} {...common} />}
+        {pts.length === 2 && <line x1={pts[0].x} y1={pts[0].y} x2={pts[1].x} y2={pts[1].y} stroke={color} strokeWidth={2 * k} />}
+        {editing && pts.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={6 * k} fill={i === 0 ? color : 'var(--surface)'} stroke={color} strokeWidth={2 * k} />)}
+      </>
+    );
+    top = pts.reduce((a, p) => (p.y < a.y ? p : a), pts[0] ?? top);
+  } else if (fence.type === 'drive') {
+    const z = driveZone(fence, fence.minutes, fence.traffic);
+    const d = z.segments.map((sg) => `M${sg.a.x.toFixed(0)} ${sg.a.y.toFixed(0)}L${sg.b.x.toFixed(0)} ${sg.b.y.toFixed(0)}`).join('');
+    shape = (
+      <>
+        {z.hull.length >= 3 && <polygon points={z.hull.map((p) => `${p.x},${p.y}`).join(' ')} fill={color} fillOpacity={0.05} stroke={color} strokeOpacity={0.35} strokeWidth={1 * k} strokeDasharray={`${3 * k} ${5 * k}`} />}
+        {!compact && <path d={d} stroke={color} strokeOpacity={0.6} strokeWidth={Math.max(45, 4.5 * k)} strokeLinecap="round" fill="none" />}
+        <circle cx={fence.x} cy={fence.y} r={6 * k} fill={color} stroke="var(--surface)" strokeWidth={2 * k} />
+      </>
+    );
+    top = z.hull.reduce((a, p) => (p.y < a.y ? p : a), z.hull[0] ?? top);
+  } else {
+    shape = (
+      <>
+        <circle cx={fence.x} cy={fence.y} r={fence.radius} {...common} />
+        {editing && <circle cx={fence.x} cy={fence.y} r={6 * k} fill={color} stroke="var(--surface)" strokeWidth={2 * k} />}
+      </>
+    );
+    top = { x: fence.x, y: fence.y - fence.radius };
+  }
   return (
     <g opacity={active ? 1 : 0.4}>
-      <circle cx={x} cy={y} r={r} fill="var(--violet)" fillOpacity={0.1} stroke="var(--violet)" strokeWidth={1.5 * k} strokeDasharray={`${6 * k} ${4 * k}`} />
-      {label && (
-        <text x={x} y={y - r - 6 * k} textAnchor="middle" fontSize={10.5 * k} fontWeight={650} fill="var(--violet)" stroke="var(--page)" strokeWidth={3 * k} paintOrder="stroke">
-          {label}
+      {shape}
+      {name && top && (
+        <text x={top.x} y={top.y - 8 * k} textAnchor="middle" fontSize={10.5 * k} fontWeight={650} fill={color} stroke="var(--page)" strokeWidth={3 * k} paintOrder="stroke">
+          {name}
         </text>
       )}
     </g>

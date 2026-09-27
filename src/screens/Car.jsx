@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import {
-  FileClock, Fuel, BookOpenCheck, ParkingSquare, Users, ShieldAlert, Film, Gamepad2, CreditCard, ChevronRight, Settings as Cog, AlertTriangle,
+  Activity, Hexagon, FileClock, Fuel, BookOpenCheck, ParkingSquare, Users, ShieldAlert, Film, Gamepad2, CreditCard, ChevronRight, Settings as Cog, AlertTriangle,
 } from 'lucide-react';
 import { useApp } from '../state.jsx';
 import { SectionTitle } from '../components/ui.jsx';
@@ -9,7 +9,7 @@ import { fmtINR } from '../lib/costs.js';
 import { fmtAgo } from '../lib/format.js';
 
 export default function Car({ push }) {
-  const { vehicle, reminders, odometerKm, fuelLog, drivers, stolen, trips, media, parking } = useApp();
+  const { vehicle, reminders, odometerKm, fuelLog, drivers, stolen, trips, media, parking, fences } = useApp();
   const now = Date.now();
   const statuses = reminders.map((r) => ({ r, s: reminderStatus(r, now, odometerKm) })).sort((a, b) => a.s.daysLeft - b.s.daysLeft);
   const attention = statuses.filter((x) => x.s.state !== 'ok');
@@ -81,6 +81,18 @@ export default function Car({ push }) {
             <div className="m">{fastag.last ? `Last: ${fmtINR(fastag.last.fee)} · ${fmtAgo(fastag.last.t)}` : 'No tolls yet'}</div>
           </div>
         </div>
+      </div>
+
+      <SectionTitle>Tracking</SectionTitle>
+      <div className="hub-grid">
+        <button className="hub-tile" onClick={() => push('activity')}>
+          <div className="glyph good"><Activity size={18} /></div>
+          <div><div className="t">Stops & activity</div><div className="m">Running, idle, stopped · stop report</div></div>
+        </button>
+        <button className="hub-tile" onClick={() => push('geofences')}>
+          <div className="glyph violet"><Hexagon size={18} /></div>
+          <div><div className="t">Geofences</div><div className="m">{fences.filter((f) => f.enabled).length} active · circle, drive-time, drawn</div></div>
+        </button>
       </div>
 
       <SectionTitle>Safety & people</SectionTitle>

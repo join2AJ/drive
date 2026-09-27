@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Car, Cpu, Phone, Plus, RotateCcw, Server, Hexagon, Map as MapIcon, Download, Check, WifiOff, SatelliteDish } from 'lucide-react';
+import { Car, Cpu, Phone, Plus, RotateCcw, Server, Hexagon, ChevronRight, Map as MapIcon, Download, Check, WifiOff, SatelliteDish } from 'lucide-react';
 import { useApp } from '../state.jsx';
 import { NavBar, SectionTitle, Segmented, Toggle, Sheet, EVENT_META } from '../components/ui.jsx';
 import { DEFAULT_THRESHOLDS } from '../lib/analytics.js';
@@ -31,7 +31,7 @@ function SliderRow({ label, value, min, max, step = 1, unit, onChange, hint }) {
   );
 }
 
-export default function Settings({ pop }) {
+export default function Settings({ pop, push }) {
   const { vehicle, thresholds, setThresholds, trips, settings, setSettings, fences, setFences, setToast, network, live } = useApp();
   const [downloading, setDownloading] = useState({});
   const packs = settings.offlineMaps ?? {};
@@ -111,19 +111,14 @@ export default function Settings({ pop }) {
         </div>
       </div>
 
-      <SectionTitle action="Add" onAction={() => setToast('Long-press anywhere on the map to drop a geofence')}>Geofences</SectionTitle>
+      <SectionTitle>Geofences & idling</SectionTitle>
       <div className="list">
-        {fences.map((f) => (
-          <div key={f.id} className="list-item">
-            <div className="glyph violet"><Hexagon size={18} /></div>
-            <div className="grow">
-              <div className="title">{f.name}</div>
-              <input className="slider" type="range" min={100} max={1500} step={50} value={f.radius} aria-label={`${f.name} radius`} onChange={(e) => setFences(fences.map((x) => (x.id === f.id ? { ...x, radius: Number(e.target.value) } : x)))} />
-              <div className="meta num">Radius {f.radius} m · alert on enter & exit</div>
-            </div>
-            <Toggle on={f.enabled} label={`${f.name} geofence`} onChange={(on) => setFences(fences.map((x) => (x.id === f.id ? { ...x, enabled: on } : x)))} />
-          </div>
-        ))}
+        <button className="list-item" onClick={() => push('geofences')}>
+          <div className="glyph violet"><Hexagon size={18} /></div>
+          <div className="grow"><div className="title">Geofences</div><div className="meta">{fences.filter((f) => f.enabled).length} active · circle, drive-time or drawn zones</div></div>
+          <ChevronRight className="chev" size={18} />
+        </button>
+        <SliderRow label="Alert after idling for" value={settings.idleAlertMin ?? 5} min={1} max={30} unit=" min" onChange={(v) => setSettings({ ...settings, idleAlertMin: v })} hint="Engine on while standing still" />
       </div>
 
       <SectionTitle>Fuel & mileage</SectionTitle>

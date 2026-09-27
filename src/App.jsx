@@ -23,6 +23,8 @@ import Achievements from './screens/Achievements.jsx';
 import Parking from './screens/Parking.jsx';
 import Ask from './screens/Ask.jsx';
 import ShareViewer from './screens/ShareViewer.jsx';
+import Geofences, { FenceEditor } from './screens/Geofences.jsx';
+import Activity from './screens/Activity.jsx';
 import CrashOverlay from './components/CrashOverlay.jsx';
 import { Toast } from './components/ui.jsx';
 import { reminderStatus } from './lib/paperwork.js';
@@ -40,6 +42,7 @@ const PUSHED = {
   controls: Controls, costs: Costs, newIncident: IncidentNew, case: IncidentCase,
   reminders: Reminders, fuel: FuelLog, logbook: Logbook, stolen: Stolen, drivers: Drivers, driver: DriverDetail,
   weekly: WeeklyReport, hotspots: Hotspots, achievements: Achievements, parking: Parking, ask: Ask,
+  geofences: Geofences, fence: FenceEditor, activity: Activity,
 };
 
 function Shell() {

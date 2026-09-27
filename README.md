@@ -22,6 +22,8 @@ Out of the box it runs on a **built-in tracker simulator** that generates 6 week
 | **Vehicle controls** | Opened from Live (*All controls*). A top-down car shows the live state of locks, mirrors, windows, boot, lights, hazards, engine and horn. Controls: lock/unlock, remote engine start/stop (press and hold), immobilizer, parking guard, valet mode, find my car (horn + lights), pre-cool AC with temperature, mirror fold, window vent, boot, headlights, hazards, horn and a speed limiter. Each command shows *Sending…* until the car confirms it and goes into a command history. Safety interlocks block unsafe commands while driving: engine off, mirrors, boot, horn and opening windows. A *Parked (demo)* switch lets you try everything. Each control is tagged with the hardware it needs: **Tracker**, **Relay** or **CAN module**. |
 | **Fuel & costs** | Every trip is costed from its distance at your real mileage, plus fuel burnt idling. You can group spend by **destination, route, weekday or time of day**, sort by cost, visits or km, and expand a group to see each trip and its cost. It also shows ₹/km, ₹/day and idling waste, and names the costliest destination. Visit counts and trip costs appear in Insights (frequent places) and on every trip. |
 | **Incidents & claims** | **Log incident** (Live, Alerts or any trip) → choose what happened (collision, hit & run, theft, vandalism, pothole, road rage, parking damage, other) → *just now* or a moment on an earlier trip → **Seal evidence**. The GPS track from 15 min before to 5 min after is frozen with a SHA-256 fingerprint. Front camera, cabin camera and cabin audio are locked, and nothing sealed can be deleted. The case file then remembers everything the insurer will ask for, saved on the phone as you type: your statement (with prompts), a real **voice statement** from the microphone, photos (camera or gallery, which can't be removed once added), a tap-to-mark **damage map**, other party details, injuries, police FIR, witnesses, repair estimate, and your driver and policy details (pre-filled from Settings). **Prepare claim summary** writes the claim text from the sealed data and your answers, then lets you copy it, share it or download a JSON claim pack. After you mark the case as *sent to insurer* it becomes read-only, with dated notes only. Every action is written to a *record of changes*. The auto-detected collision becomes a case automatically. |
+| **Geofences** | There are three shapes. **Circle**: a radius around a point (straight-line distance). **Drive time**: everywhere the car can reach *by road* in N minutes, with light, normal or rush-hour traffic. It's worked out on the road network (speed limits scaled by traffic, plus signal/turn delays), so a place 2 km away by air can sit outside a 15-minute zone if the drive there is slow. **Draw**: tap the map to add corners, with undo/clear. Each zone can alert on enter, exit or both, and shows its crossings from the last 7 days. On the Live map, drive-time zones are drawn as a light outline. |
+| **Stops & activity** | The vehicle state is shown live on the Live screen ("Running 26s", "Idle 3m", "Stopped"). A **24-hour state bar** (running / idle / stopped) can be tapped for each period, with daily totals and the cost of idling. A map shows numbered stops. The **stop report** lists parked stops (engine off) and long idling (engine on, 3 min+), each with place, arrival, departure and duration. You can filter by type or set the shortest stop listed (2/5/15/30 min), and export to Excel or PDF. A **long-idling alert** fires after N minutes (Settings). |
 | **Stolen-vehicle mode** | Hold to turn on. Tracking switches to every 5 s, a **police link** (no app or login needed) shows live position, speed, plate and IMEI, and contacts get an SMS. The engine is cut **only once the car slows below 20 km/h**. It stays silent (no horn or lights) and keeps a timeline and FIR number. |
 | **Share my ride** | From Live: pick contacts, get a live link with ETA that **stops automatically on arrival**. The viewer page needs no app. |
 | **Drivers & new-driver mode** | Profiles identified by phone Bluetooth, key fob or RFID tag. Every trip has a driver. New-driver mode sets a **speed limit and curfew**, lists each rule break, and sends a **weekly report to the parent**. |
@@ -51,7 +53,7 @@ All of these live in [`src/lib/analytics.js`](src/lib/analytics.js). They work o
 | Top routes | Place → place pairs, with median, best and worst duration. |
 | Safety score | 100 minus event penalties, scaled by distance. |
 
-Unit tests in [`test/analytics.test.js`](test/analytics.test.js) and [`test/features.test.js`](test/features.test.js) cover each rule (28 tests), including tolls, reminders, mileage, logbook tags, night-movement and curfew detection, hotspots and offline question answering. One test checks that the detector finds exactly the events the simulated device recorded.
+Unit tests in [`test/analytics.test.js`](test/analytics.test.js) and [`test/features.test.js`](test/features.test.js) and [`test/geofence-stops.test.js`](test/geofence-stops.test.js) cover each rule (37 tests), including tolls, reminders, mileage, logbook tags, night-movement and curfew detection, hotspots and offline question answering. One test checks that the detector finds exactly the events the simulated device recorded.
 
 ## Deploy on Netlify
 
@@ -120,11 +122,14 @@ src/
   screens/              Live, Trips, TripDetail, Insights, Vault, Alerts (+Incident), Settings,
                         Controls, Costs, Incidents (log wizard, claim case), Car (hub),
                         Reminders, FuelLog, Logbook, Stolen, Drivers, WeeklyReport,
-                        Hotspots, Achievements, Parking, Ask, ShareViewer
+                        Hotspots, Achievements, Parking, Ask, ShareViewer, Geofences
+                        (+ editor), Activity (stops & states)
 netlify/functions/ask.mjs   Claude-backed assistant (questions + statement drafts)
 public/sw.js, manifest      installable offline web app
 docs/hardware.md            build-your-own tracker design
 firmware/drive-tracker/     ESP32-S3 starter firmware (untested skeleton)
+  lib/geofence.js       circle / drive-time (isochrone) / polygon zones + enter/exit events
+  lib/stops.js          running / idle / stopped timeline, stop report, live state
   lib/costs.js          trip cost (fuel + FASTag tolls + parking) and grouping
   lib/paperwork.js      reminders, fuel log / real mileage, logbook tags
   lib/security.js       unusual-night detection, new-driver rules, driver profiles
@@ -133,5 +138,5 @@ firmware/drive-tracker/     ESP32-S3 starter firmware (untested skeleton)
   lib/aiClient.js       streaming client for /api/ask
   lib/exporters.js      Excel (write-excel-file) and PDF (jsPDF) exports, lazy-loaded
   lib/evidence.js       SHA-256 sealing, GPS snapshots, photo compression, claim vocab
-test/analytics.test.js, test/features.test.js
+test/analytics.test.js, test/features.test.js, test/geofence-stops.test.js
 ```

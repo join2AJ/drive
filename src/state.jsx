@@ -3,10 +3,11 @@ import { createDemoSource } from './data/source.js';
 import {
   DEFAULT_THRESHOLDS, analyzeTrip, detectEvents, frequentPlaces, geofenceTransitions,
 } from './lib/analytics.js';
-import { places as allPlaces, tollPlazas, DEFAULT_PARKING_FEES } from './data/cityModel.js';
+import { places as allPlaces, tollPlazas, DEFAULT_PARKING_FEES, describePoint } from './data/cityModel.js';
 import { DEFAULT_FUEL, tollsOnTrip } from './lib/costs.js';
 import { defaultReminders, seedFuelLog } from './lib/paperwork.js';
 import { DEFAULT_DRIVERS, unusualMovement, driverViolations } from './lib/security.js';
+import { tripSegments } from './lib/stops.js';
 import { sha256, snapshotGps } from './lib/evidence.js';
 
 const Ctx = createContext(null);
@@ -51,6 +52,8 @@ const DEFAULT_SETTINGS = {
   claimProfile: { driverName: 'Arjun Kumar', phone: '+91 98450 67890', licenceNo: '', insurer: '', policyNo: '' },
   parkingFees: DEFAULT_PARKING_FEES,
   logbookRule: 'office', // trips to/from Office default to "business"
+  idleAlertMin: 5, // alert when the engine idles longer than this
+  stopMinMin: 2, // shortest parked stop listed in the stop report
   offlineMaps: { bengaluru: 'ready' },
   autoUpdateMaps: true,
 };
@@ -79,7 +82,6 @@ export function AppProvider({ children }) {
   const [source] = useState(() => createDemoSource(Date.now()));
   const [thresholds, setThresholds] = useState(() => load('drive.thresholds', DEFAULT_THRESHOLDS));
   const [settings, setSettings] = useState(() => load('drive.settings', DEFAULT_SETTINGS));
-  const [fences, setFences] = useState(source.geofences);
   const [toast, setToast] = useState(null);
   const [immobilized, setImmobilized] = useState(false);
   const [incidents, setIncidents] = useState(() => {
@@ -143,7 +145,8 @@ export function AppProvider({ children }) {
   const [stolen, setStolen] = usePersistent('drive.stolen', { active: false });
   const [share, setShare] = useState(null);
   const odometerKm = source.vehicle.odometerKm;
-  const alerts = useMemo(() => buildAlerts(trips, fences, drivers), [trips, fences, drivers]);
+  const [fences, setFences] = usePersistent('drive.fences.v2', source.geofences);
+  const alerts = useMemo(() => buildAlerts(trips, fences, drivers, settings.idleAlertMin), [trips, fences, drivers, settings.idleAlertMin]);
 
   // ---------------- Connectivity ----------------
   // Phone: real navigator.onLine, plus a demo switch. Tracker: demo switch for "no 4G here".
@@ -264,7 +267,7 @@ export function AppProvider({ children }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
-function buildAlerts(trips, fences, drivers = []) {
+function buildAlerts(trips, fences, drivers = [], idleAlertMin = 5) {
   const out = [];
   const now = Date.now();
   for (const t of trips) {
@@ -284,6 +287,13 @@ function buildAlerts(trips, fences, drivers = []) {
   // GNSS lost while 4G stayed up and the car was parked: classic jammer signature.
   out.push({ type: 'gps_jam', t: now - 6 * 86_400_000 - 21.8 * 3_600_000, x: home.x + 40, y: home.y + 25, id: 'gj1', detail: 'GPS jammed for 4 min at 2:12 AM while 4G stayed connected · motion sensor quiet · no movement' });
   unusualMovement(trips).forEach((u, k) => out.push({ ...u, id: `un${k}` }));
+  // Engine left running while stationary.
+  for (const t of trips) {
+    tripSegments(t, idleAlertMin * 60).filter((sg) => sg.state === 'idle').forEach((sg, k) => out.push({
+      type: 'long_idle', t: sg.from, x: sg.x, y: sg.y, tripId: t.id, id: `${t.id}-idle${k}`, sec: (sg.to - sg.from) / 1000,
+      detail: `Engine idled ${Math.round((sg.to - sg.from) / 60000)} min at ${describePoint(sg)}`,
+    }));
+  }
   // New-driver rule breaches (speed / curfew).
   for (const t of trips) {
     const d = drivers.find((x) => x.id === t.driver);

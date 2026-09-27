@@ -28,6 +28,7 @@
   /* sequential ramp: near-zero recedes toward the surface in each mode */
   --seq-1: #104281; --seq-2: #1c5cab; --seq-3: #2a78d6; --seq-4: #5598e7; --seq-5: #9ec5f4;
 
+  --state-stopped: #6e6d68;
   --car-body: #3a3a37;
   --car-roof: #2f2f2c;
   --car-edge: #55544f;
@@ -75,6 +76,7 @@
   --seq-1: #cde2fb; --seq-2: #86b6ef; --seq-3: #3987e5; --seq-4: #1c5cab; --seq-5: #0d366b;
   --shadow: 0 10px 30px rgba(20, 20, 10, 0.12);
 
+  --state-stopped: #a8a69f;
   --car-body: #dcdad3;
   --car-roof: #cfccc4;
   --car-edge: #b3b1a9;

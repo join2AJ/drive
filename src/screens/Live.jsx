@@ -11,6 +11,7 @@ import { summarizeTrip } from '../lib/analytics.js';
 import { roadAt } from '../data/cityModel.js';
 import { formatLatLng } from '../lib/geo.js';
 import { reminderStatus } from '../lib/paperwork.js';
+import { liveState, STATE_META } from '../lib/stops.js';
 import { shareUrl } from './Stolen.jsx';
 
 export default function Live({ push }) {
@@ -28,6 +29,7 @@ export default function Live({ push }) {
   };
   const { cur, heading, trail, ahead } = live;
   const moving = cur.v > 2;
+  const vstate = liveState(live.samples, live.idx, { engineOn: controls.engine === 'on' });
   const road = useMemo(() => roadAt(cur), [cur]);
   const home = placeAt(ahead[ahead.length - 1]);
 
@@ -56,7 +58,7 @@ export default function Live({ push }) {
       <MapView className="live-map" fit={liveFit} fitKey="live" follow={cur} controlsTop="calc(var(--safe-top) + 64px)">
         {(k) => (
           <>
-            {fences.filter((f) => f.enabled).map((f) => <Fence key={f.id} x={f.x} y={f.y} r={f.radius} k={k} label={f.name} />)}
+            {fences.filter((f) => f.enabled).map((f) => <Fence key={f.id} f={f} k={k} compact />)}
             <Route points={ahead} k={k} color="var(--ink-3)" width={4} dashed casing={false} step={3} />
             <Route points={trail} k={k} width={5} step={2} />
             <Pin x={ahead[ahead.length - 1].x} y={ahead[ahead.length - 1].y} k={k} color="var(--violet)" icon={<PlaceIcon name={home?.icon ?? 'home'} size={24} />} />
@@ -68,10 +70,10 @@ export default function Live({ push }) {
       <div className="live-top">
         <div className="vehicle-pill">
           <div className="name">{vehicle.name}</div>
-          <div className="status">
-            <span className={`dot ${moving ? 'live' : ''}`} style={{ background: moving ? 'var(--good)' : 'var(--ink-3)' }} />
-            {moving ? 'Driving' : 'Stopped'} · {vehicle.plate}
-          </div>
+          <button className="status" style={{ padding: 0 }} onClick={() => push('activity')} aria-label="Vehicle state — open stops and activity">
+            <span className={`dot ${vstate.state === 'running' ? 'live' : ''}`} style={{ background: STATE_META[vstate.state].color }} />
+            {STATE_META[vstate.state].label}{vstate.state !== 'running' || vstate.sec > 0 ? ` ${fmtDuration(vstate.sec)}` : ''}{vstate.waiting ? ' (signal)' : ''} · {vehicle.plate}
+          </button>
         </div>
         <button className="icon-btn" style={{ background: 'var(--glass)', backdropFilter: 'blur(12px)', color: 'var(--accent)' }} aria-label="Ask about your driving" onClick={() => push('ask')}>
           <Sparkles size={20} />

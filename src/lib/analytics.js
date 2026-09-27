@@ -262,25 +262,8 @@ export function dailyTotals(trips, days, now = Date.now()) {
   return out;
 }
 
-/** Geofence entry/exit transitions derived from GPS positions. */
-export function geofenceTransitions(trips, fences) {
-  const out = [];
-  for (const f of fences) {
-    if (!f.enabled) continue;
-    for (const t of trips) {
-      let inside = Math.hypot(t.samples[0].x - f.x, t.samples[0].y - f.y) < f.radius;
-      for (let i = 1; i < t.samples.length; i += 2) {
-        const s = t.samples[i];
-        const now = Math.hypot(s.x - f.x, s.y - f.y) < f.radius;
-        if (now !== inside) {
-          out.push({ type: now ? 'geofence_enter' : 'geofence_exit', fence: f.name, t: s.t, x: s.x, y: s.y, tripId: t.id });
-          inside = now;
-        }
-      }
-    }
-  }
-  return out;
-}
+// Geofence entry/exit lives with the fence shapes (circle, drive-time, polygon).
+export { geofenceTransitions } from './geofence.js';
 
 export function median(arr) {
   if (!arr.length) return 0;

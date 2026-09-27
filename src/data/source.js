@@ -13,7 +13,7 @@ import { mulberry32 } from '../lib/rng.js';
  *   trips        – [{ id, start, end, samples: [{t,x,y,v,limit}], deviceEvents }]
  *   media        – dashcam / cabin-audio recordings the unit uploaded
  *   savedPlaces  – user-labelled places
- *   geofences    – [{ id, name, x, y, radius, enabled }]
+ *   geofences    – [{ id, name, type: 'circle'|'drive'|'polygon', x, y, radius | minutes | points, enabled }]
  *   live         – { samples } a trip currently in progress (streamed at 1 Hz)
  *
  * Positions are local metres; see lib/geo.js for lat/lng conversion.
@@ -43,9 +43,14 @@ export function createDemoSource(now = Date.now()) {
     media: buildMedia(trips, now),
     savedPlaces: Object.values(places).filter((p) => p.name),
     geofences: [
-      { id: 'g1', name: 'Home', x: places.home.x, y: places.home.y, radius: 400, enabled: true },
-      { id: 'g2', name: 'Office', x: places.office.x, y: places.office.y, radius: 500, enabled: true },
-      { id: 'g3', name: 'School', x: places.school.x, y: places.school.y, radius: 300, enabled: false },
+      { id: 'g1', name: 'Home', type: 'circle', x: places.home.x, y: places.home.y, radius: 400, enabled: true },
+      { id: 'g2', name: 'Office campus', type: 'polygon', enabled: true, points: [
+        { x: places.office.x - 520, y: places.office.y - 380 }, { x: places.office.x + 480, y: places.office.y - 460 },
+        { x: places.office.x + 560, y: places.office.y + 300 }, { x: places.office.x - 60, y: places.office.y + 520 },
+        { x: places.office.x - 480, y: places.office.y + 260 },
+      ] },
+      { id: 'g3', name: '15 min from Home', type: 'drive', x: places.home.x, y: places.home.y, minutes: 15, traffic: 'normal', enabled: true, alertEnter: false, alertExit: true },
+      { id: 'g4', name: 'School', type: 'circle', x: places.school.x, y: places.school.y, radius: 300, enabled: false },
     ],
   };
 }

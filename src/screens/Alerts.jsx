@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ChevronRight, Siren, Phone, Share2, Lock, Video, Mic, Check, FilePlus2, FolderOpen } from 'lucide-react';
 import { IncidentList } from './Incidents.jsx';
-import { roadAt } from '../data/cityModel.js';
+import { roadAt, describePoint } from '../data/cityModel.js';
 import { useApp } from '../state.jsx';
 import { EVENT_META, EventGlyph, NavBar, SectionTitle } from '../components/ui.jsx';
 import MapView, { Route, Pin } from '../components/MapView.jsx';
@@ -16,7 +16,7 @@ const GROUPS = {
   geofence: (a) => a.type.startsWith('geofence'),
   security: (a) => ['power_cut', 'tamper', 'tow', 'gps_jam', 'unusual_night'].includes(a.type),
   drivers: (a) => ['curfew', 'driver_speed'].includes(a.type),
-  vehicle: (a) => ['ignition_on', 'ignition_off', 'low_battery'].includes(a.type),
+  vehicle: (a) => ['ignition_on', 'ignition_off', 'low_battery', 'long_idle'].includes(a.type),
 };
 
 export default function Alerts({ push }) {
@@ -77,7 +77,7 @@ export default function Alerts({ push }) {
                     <div className="title grow ellipsis">{a.type.startsWith('geofence') ? `${a.type === 'geofence_enter' ? 'Arrived at' : 'Left'} ${a.fence}` : EVENT_META[a.type].label}</div>
                     <span className="muted num" style={{ fontSize: 12 }}>{fmtTime(a.t)}</span>
                   </div>
-                  <div className="meta ellipsis num">{a.type.startsWith('geofence') ? 'Geofence alert' : eventLine(a) || (placeNameAt(a) ?? formatLatLng(a.x, a.y))}</div>
+                  <div className="meta ellipsis num">{a.type.startsWith('geofence') ? `${a.fenceType === 'drive' ? 'Drive-time zone' : a.fenceType === 'polygon' ? 'Drawn zone' : 'Circle zone'} · ${describePoint(a)}` : eventLine(a) || (placeNameAt(a) ?? formatLatLng(a.x, a.y))}</div>
                 </div>
               </button>
             ))}
