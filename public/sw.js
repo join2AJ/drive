@@ -1,6 +1,6 @@
 // Offline support: the app shell and every loaded asset are cached, so Drive opens and shows
 // your stored trips, map and evidence with no connection. API calls always go to the network.
-const CACHE = 'drive-v1';
+const CACHE = 'drive-v2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (e) => {
@@ -18,6 +18,8 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return;
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/.netlify/')) return;
+  // The docs site is separate static pages; never let it replace the cached app shell.
+  if (url.pathname.includes('/docs/')) return;
 
   if (req.mode === 'navigate') {
     // Network first so updates arrive; fall back to the cached shell offline.

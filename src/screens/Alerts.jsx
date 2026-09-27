@@ -12,7 +12,7 @@ import { formatLatLng } from '../lib/geo.js';
 
 const GROUPS = {
   all: () => true,
-  safety: (a) => ['crash', 'harsh_brake', 'harsh_accel', 'overspeed'].includes(a.type),
+  safety: (a) => ['crash', 'harsh_brake', 'harsh_accel', 'overspeed', 'route_deviation'].includes(a.type),
   geofence: (a) => a.type.startsWith('geofence'),
   security: (a) => ['power_cut', 'tamper', 'tow', 'gps_jam', 'unusual_night'].includes(a.type),
   drivers: (a) => ['curfew', 'driver_speed'].includes(a.type),
@@ -20,7 +20,11 @@ const GROUPS = {
 };
 
 export default function Alerts({ push }) {
-  const { alerts, placeNameAt, incidents } = useApp();
+  const { alerts: baseAlerts, placeNameAt, incidents, routeState } = useApp();
+  const alerts = useMemo(() => [
+    ...routeState.log.map((d, i) => ({ type: 'route_deviation', t: d.from, x: d.x, y: d.y, id: `rd${i}-${d.from}`, detail: `Up to ${Math.round(d.maxOff)} m off for ${Math.round((d.to - d.from) / 1000)} s` })),
+    ...baseAlerts,
+  ].sort((a, b) => b.t - a.t), [baseAlerts, routeState.log]);
   const [group, setGroup] = useState('all');
   const [limit, setLimit] = useState(60);
   const list = useMemo(() => alerts.filter(GROUPS[group]), [alerts, group]);

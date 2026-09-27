@@ -60,7 +60,7 @@ function buildConstraints(path, poly, rand) {
  * @param {number} [o.speedFactor] driver aggressiveness vs posted limit
  * @param {Array<{type:'harsh_brake'|'harsh_accel'|'crash', at:number}>} [o.inject] `at` is fraction of route
  */
-export function simulateDrive({ path, start, seed, speedFactor = 1, inject = [] }) {
+export function simulateDrive({ path, start, seed, speedFactor = 1, inject = [], v0 = 0 }) {
   const rand = mulberry32(seed);
   const poly = buildPolyline(path);
   const cons = buildConstraints(path, poly, rand);
@@ -69,7 +69,7 @@ export function simulateDrive({ path, start, seed, speedFactor = 1, inject = [] 
   const pending = inject.map((e) => ({ ...e, fired: false }));
 
   let s = 0;
-  let v = 0;
+  let v = v0 / KMH;
   let t = start;
   let ci = 0;
   let dwell = 0;

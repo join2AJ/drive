@@ -25,6 +25,10 @@ import Ask from './screens/Ask.jsx';
 import ShareViewer from './screens/ShareViewer.jsx';
 import Geofences, { FenceEditor } from './screens/Geofences.jsx';
 import Activity from './screens/Activity.jsx';
+import RouteWatch from './screens/RouteWatch.jsx';
+import Plans from './screens/Plans.jsx';
+import Fleet from './screens/Fleet.jsx';
+import RouteAlarm from './components/RouteAlarm.jsx';
 import CrashOverlay from './components/CrashOverlay.jsx';
 import { Toast } from './components/ui.jsx';
 import { reminderStatus } from './lib/paperwork.js';
@@ -42,7 +46,8 @@ const PUSHED = {
   controls: Controls, costs: Costs, newIncident: IncidentNew, case: IncidentCase,
   reminders: Reminders, fuel: FuelLog, logbook: Logbook, stolen: Stolen, drivers: Drivers, driver: DriverDetail,
   weekly: WeeklyReport, hotspots: Hotspots, achievements: Achievements, parking: Parking, ask: Ask,
-  geofences: Geofences, fence: FenceEditor, activity: Activity,
+  geofences: Geofences, fence: FenceEditor, activity: Activity, routewatch: RouteWatch,
+  plans: Plans, fleet: Fleet,
 };
 
 function Shell() {
@@ -106,6 +111,7 @@ function Shell() {
         </div>
       )}
       <Toast message={toast} onDone={() => setToast(null)} />
+      <RouteAlarm />
       <CrashOverlay />
     </div>
   );

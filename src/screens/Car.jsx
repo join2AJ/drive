@@ -1,15 +1,16 @@
 import { useMemo } from 'react';
 import {
-  Activity, Hexagon, FileClock, Fuel, BookOpenCheck, ParkingSquare, Users, ShieldAlert, Film, Gamepad2, CreditCard, ChevronRight, Settings as Cog, AlertTriangle,
+  Activity, Hexagon, AlarmClock, FileClock, Fuel, BookOpenCheck, ParkingSquare, Users, ShieldAlert, Film, Gamepad2, CreditCard, ChevronRight, Settings as Cog, AlertTriangle, BadgeIndianRupee, Building2, BookOpen,
 } from 'lucide-react';
 import { useApp } from '../state.jsx';
 import { SectionTitle } from '../components/ui.jsx';
 import { reminderStatus, mileageFromLog } from '../lib/paperwork.js';
 import { fmtINR } from '../lib/costs.js';
 import { fmtAgo } from '../lib/format.js';
+import { PLANS } from '../lib/plans.js';
 
 export default function Car({ push }) {
-  const { vehicle, reminders, odometerKm, fuelLog, drivers, stolen, trips, media, parking, fences } = useApp();
+  const { account, vehicle, reminders, odometerKm, fuelLog, drivers, stolen, trips, media, parking, fences } = useApp();
   const now = Date.now();
   const statuses = reminders.map((r) => ({ r, s: reminderStatus(r, now, odometerKm) })).sort((a, b) => a.s.daysLeft - b.s.daysLeft);
   const attention = statuses.filter((x) => x.s.state !== 'ok');
@@ -89,6 +90,10 @@ export default function Car({ push }) {
           <div className="glyph good"><Activity size={18} /></div>
           <div><div className="t">Stops & activity</div><div className="m">Running, idle, stopped · stop report</div></div>
         </button>
+        <button className="hub-tile" onClick={() => push('routewatch')}>
+          <div className="glyph warn"><AlarmClock size={18} /></div>
+          <div><div className="t">Route watch</div><div className="m">Alarm when the vehicle leaves its route</div></div>
+        </button>
         <button className="hub-tile" onClick={() => push('geofences')}>
           <div className="glyph violet"><Hexagon size={18} /></div>
           <div><div className="t">Geofences</div><div className="m">{fences.filter((f) => f.enabled).length} active · circle, drive-time, drawn</div></div>
@@ -114,6 +119,23 @@ export default function Car({ push }) {
           <div><div className="t">Vault</div><div className="m">{media.length} recordings · {media.filter((m) => m.locked).length} locked</div></div>
         </button>
       </div>
+
+      <SectionTitle>Account</SectionTitle>
+      <div className="hub-grid">
+        <button className="hub-tile" onClick={() => push('plans')}>
+          <div className="glyph accent"><BadgeIndianRupee size={18} /></div>
+          <div><div className="t">Plan & billing</div><div className="m">{PLANS[account.plan]?.name ?? 'Free'} · {account.type === 'business' ? `${account.vehicles} vehicles` : 'personal'}</div></div>
+        </button>
+        <button className="hub-tile" onClick={() => push('fleet')}>
+          <div className="glyph violet"><Building2 size={18} /></div>
+          <div><div className="t">Fleet dashboard</div><div className="m">{account.type === 'business' ? 'All vehicles, live states' : 'For taxis, buses & trucks'}</div></div>
+        </button>
+      </div>
+      <a className="list list-item" href="./docs/" target="_blank" rel="noopener" style={{ marginTop: 10, textDecoration: 'none', color: 'inherit' }}>
+        <div className="glyph"><BookOpen size={18} /></div>
+        <div className="grow"><div className="title">Help & product guide</div><div className="meta">Every feature, plans, hardware & setup</div></div>
+        <ChevronRight className="chev" size={18} />
+      </a>
 
       <SectionTitle>Motivation</SectionTitle>
       <button className="list list-item" onClick={() => push('achievements')}>

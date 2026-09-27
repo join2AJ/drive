@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  Settings, Lock, Unlock, Mic, Video, Share2, Siren, Sparkles, ShieldAlert, Copy, X, CloudOff, FileClock, Satellite, Signal, BatteryFull, KeyRound, ChevronRight, Clock, Route as RouteIcon, LockOpen, FilePlus2, Snowflake, FlipHorizontal2, Megaphone,
+  Settings, Lock, Unlock, Mic, Video, Share2, Siren, AlarmClock, Sparkles, ShieldAlert, Copy, X, CloudOff, FileClock, Satellite, Signal, BatteryFull, KeyRound, ChevronRight, Clock, Route as RouteIcon, LockOpen, FilePlus2, Snowflake, FlipHorizontal2, Megaphone,
 } from 'lucide-react';
 import MapView, { Route, Vehicle, Fence, Pin, boundsOf } from '../components/MapView.jsx';
 import { SpeedGauge, ScoreRing } from '../components/Charts.jsx';
@@ -15,7 +15,7 @@ import { liveState, STATE_META } from '../lib/stops.js';
 import { shareUrl } from './Stolen.jsx';
 
 export default function Live({ push }) {
-  const { live, vehicle, trips, fences, placeAt, immobilized, setImmobilized, setToast, alerts, controls, share, setShare, stolen, settings, network, reminders, odometerKm } = useApp();
+  const { routeWatch, routeState, live, vehicle, trips, fences, placeAt, immobilized, setImmobilized, setToast, alerts, controls, share, setShare, stolen, settings, network, reminders, odometerKm } = useApp();
   const [sheet, setSheet] = useState(null);
   const [shareWith, setShareWith] = useState(() => settings.contacts.filter((c) => c.phone !== '112').map((c) => c.name));
   const overdue = reminders.filter((r) => reminderStatus(r, Date.now(), odometerKm).state === 'overdue');
@@ -106,6 +106,16 @@ export default function Live({ push }) {
           <button className="banner" style={{ marginTop: 12 }} onClick={() => push('stolen')}>
             <div className="glyph crit"><ShieldAlert size={18} /></div>
             <div className="grow"><div style={{ fontWeight: 700 }}>Stolen-vehicle mode is on</div><div className="ink2" style={{ fontSize: 13 }}>Tracking every 5 s · {stolen.engineCutAt ? 'engine cut' : 'engine cut armed'}</div></div>
+            <ChevronRight className="chev" size={18} />
+          </button>
+        )}
+        {routeWatch.enabled && (
+          <button className="banner info" style={{ marginTop: 12, ...(routeState.current ? { background: 'var(--warning-soft)', borderColor: 'color-mix(in srgb, var(--warning) 45%, transparent)' } : {}) }} onClick={() => push('routewatch')}>
+            <div className={`glyph ${routeState.current ? 'warn' : 'good'}`}><AlarmClock size={18} /></div>
+            <div className="grow">
+              <div style={{ fontWeight: 650 }}>{routeState.current ? `Off route · ${Math.round(routeState.dist)} m` : 'Route watch · on route'}</div>
+              <div className="ink2" style={{ fontSize: 13 }}>Alarm if more than {routeWatch.corridorM} m off for {routeWatch.graceSec} s</div>
+            </div>
             <ChevronRight className="chev" size={18} />
           </button>
         )}

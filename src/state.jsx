@@ -3,7 +3,10 @@ import { createDemoSource } from './data/source.js';
 import {
   DEFAULT_THRESHOLDS, analyzeTrip, detectEvents, frequentPlaces, geofenceTransitions,
 } from './lib/analytics.js';
-import { places as allPlaces, tollPlazas, DEFAULT_PARKING_FEES, describePoint } from './data/cityModel.js';
+import { places as allPlaces, tollPlazas, DEFAULT_PARKING_FEES, describePoint, city, route as roadRoute, nearestNode } from './data/cityModel.js';
+import { simulateDrive } from './data/simulator.js';
+import { generateFleet } from './data/fleet.js';
+import { simplifyRoute, offRoute } from './lib/route.js';
 import { DEFAULT_FUEL, tollsOnTrip } from './lib/costs.js';
 import { defaultReminders, seedFuelLog } from './lib/paperwork.js';
 import { DEFAULT_DRIVERS, unusualMovement, driverViolations } from './lib/security.js';
@@ -172,6 +175,37 @@ export function AppProvider({ children }) {
     for (let i = 1; i < live.ahead.length; i += 1) d += Math.hypot(live.ahead[i].x - live.ahead[i - 1].x, live.ahead[i].y - live.ahead[i - 1].y);
     return d;
   }, [live.ahead]);
+  // ---------------- Account, plan & fleet ----------------
+  const [account, setAccount] = usePersistent('drive.account', { type: 'personal', plan: 'plus', vehicles: 1, billing: 'monthly', hw: 'tracker', hwMode: 'buy', vehicleType: 'car', company: '' });
+  const fleet = useMemo(() => generateFleet(), []);
+  const [addedVehicles, setAddedVehicles] = usePersistent('drive.fleet.added', []);
+
+  // ---------------- Route deviation watch ----------------
+  const [routeWatch, setRouteWatch] = usePersistent('drive.routewatch', { enabled: true, corridorM: 200, graceSec: 20, sound: true, notifyContacts: true });
+  const plannedRoute = useMemo(() => simplifyRoute(live.planned, 30), [live.planned]);
+  const [routeState, setRouteState] = useState({ dist: 0, offSince: null, alarm: null, log: [] });
+  useEffect(() => {
+    if (!routeWatch.enabled) return;
+    const { dist } = offRoute(live.cur, plannedRoute);
+    const t = live.now;
+    setRouteState((rs) => {
+      const off = dist > routeWatch.corridorM;
+      if (off) {
+        const offSince = rs.offSince ?? t;
+        const current = rs.current ?? { from: t, maxOff: dist };
+        const cur = { ...current, maxOff: Math.max(current.maxOff, dist), x: live.cur.x, y: live.cur.y };
+        const fire = !rs.current?.alarmed && (t - offSince) / 1000 >= routeWatch.graceSec;
+        if (fire) cur.alarmed = true;
+        return { ...rs, dist, offSince, current: cur, alarm: fire ? { ...cur, t, dist } : rs.alarm };
+      }
+      if (rs.current?.alarmed) {
+        return { dist, offSince: null, current: null, alarm: rs.alarm, log: [{ ...rs.current, to: t }, ...rs.log].slice(0, 20) };
+      }
+      return { ...rs, dist, offSince: null, current: null };
+    });
+  }, [live.cur, live.now, plannedRoute, routeWatch]);
+  const ackRouteAlarm = useCallback(() => setRouteState((rs) => ({ ...rs, alarm: null })), []);
+
   useEffect(() => {
     if (share?.active && share.stopOnArrival && remainingM < 60) {
       setShare((sh) => ({ ...sh, active: false, endedAt: Date.now(), endReason: 'arrived' }));
@@ -263,6 +297,8 @@ export function AppProvider({ children }) {
     media, deleteMedia, incidents, createIncident, updateIncident,
     reminders, setReminders, fuelLog, setFuelLog, tripTags, setTripTags, drivers, setDrivers,
     parking, setParking, stolen, setStolen, share, setShare, remainingM, odometerKm, network,
+    routeWatch, setRouteWatch, plannedRoute, routeState, ackRouteAlarm,
+    account, setAccount, fleet, addedVehicles, setAddedVehicles,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -394,6 +430,26 @@ function useLiveVehicle(liveTrip, thresholds, connected = true, onSync) {
     });
   }, [idx]);
 
+  /** Demo: the driver leaves the planned route (via a junction ~1–2 km off it) and then heads home. */
+  const simulateDetour = useCallback(() => {
+    setSamples((old) => {
+      const cur = old[idx];
+      const planned = simplifyRoute(liveTrip.samples, 60);
+      const from = nearestNode(cur);
+      const dest = liveTrip.path.nodes[liveTrip.path.nodes.length - 1];
+      const candidates = city.nodes
+        .filter((n) => { const d = Math.hypot(n.x - cur.x, n.y - cur.y); return d > 900 && d < 2200 && offRoute(n, planned).dist > 800; })
+        .sort((a, b) => Math.hypot(a.x - cur.x, a.y - cur.y) - Math.hypot(b.x - cur.x, b.y - cur.y));
+      if (!candidates.length) return old;
+      const leg1 = roadRoute(from, candidates[0].id);
+      const leg2 = roadRoute(candidates[0].id, dest);
+      const path = { nodes: [...leg1.nodes, ...leg2.nodes.slice(1)], edges: [...leg1.edges, ...leg2.edges] };
+      if (!path.edges.length) return old;
+      const sim = simulateDrive({ path, start: cur.t, seed: 7, speedFactor: 1, v0: Math.min(cur.v, 45) });
+      return [...old.slice(0, idx + 1), ...sim.samples.slice(1)];
+    });
+  }, [idx, liveTrip]);
+
   const dismissCrash = useCallback(() => { setCrash(null); setPaused(false); }, []);
   const resume = useCallback(() => {
     setSamples(liveTrip.samples);
@@ -405,7 +461,8 @@ function useLiveVehicle(liveTrip, thresholds, connected = true, onSync) {
   }, [liveTrip, startIdx]);
 
   return {
-    cur, heading, trail, ahead, idx: vi, deviceIdx: idx, buffered, samples, crash, setCrash, dismissCrash, simulateImpact, resume,
+    cur, heading, trail, ahead, idx: vi, deviceIdx: idx, buffered, samples, crash, setCrash, dismissCrash, simulateImpact, simulateDetour, resume,
+    planned: liveTrip.samples,
     tripStart: liveTrip.samples[0].t + offset.current,
     now: cur.t + offset.current,
     stopped: paused && !crash,

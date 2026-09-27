@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Car, Cpu, Phone, Plus, RotateCcw, Server, Hexagon, ChevronRight, Map as MapIcon, Download, Check, WifiOff, SatelliteDish } from 'lucide-react';
+import { Car, Cpu, Phone, Plus, RotateCcw, Server, Hexagon, ChevronRight, Map as MapIcon, Download, Check, WifiOff, SatelliteDish, BadgeIndianRupee } from 'lucide-react';
 import { useApp } from '../state.jsx';
 import { NavBar, SectionTitle, Segmented, Toggle, Sheet, EVENT_META } from '../components/ui.jsx';
 import { DEFAULT_THRESHOLDS } from '../lib/analytics.js';
+import { PLANS } from '../lib/plans.js';
 
 const OFFLINE_PACKS = [
   { key: 'bengaluru', name: 'Bengaluru city', size: 38, detail: 'Streets, speed limits, landmarks' },
@@ -32,7 +33,7 @@ function SliderRow({ label, value, min, max, step = 1, unit, onChange, hint }) {
 }
 
 export default function Settings({ pop, push }) {
-  const { vehicle, thresholds, setThresholds, trips, settings, setSettings, fences, setFences, setToast, network, live } = useApp();
+  const { account, vehicle, thresholds, setThresholds, trips, settings, setSettings, fences, setFences, setToast, network, live } = useApp();
   const [downloading, setDownloading] = useState({});
   const packs = settings.offlineMaps ?? {};
   const downloadPack = (p) => {
@@ -75,6 +76,12 @@ export default function Settings({ pop, push }) {
           </div>
         </div>
       </div>
+
+      <button className="list list-item" style={{ marginTop: 10 }} onClick={() => push('plans')}>
+        <div className="glyph accent"><BadgeIndianRupee size={18} /></div>
+        <div className="grow"><div className="title">{PLANS[account.plan]?.name ?? 'Free'} plan</div><div className="meta">{account.type === 'business' ? `Business · ${account.company || 'your company'} · ${account.vehicles} vehicles` : 'Personal'} · change plan or billing</div></div>
+        <ChevronRight className="chev" size={18} />
+      </button>
 
       <SectionTitle>Tracker hardware</SectionTitle>
       <div className="list">

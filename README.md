@@ -7,6 +7,16 @@ It ships as one codebase:
 - **Web / PWA**: `npm run dev`, then open it on your phone.
 - **Android & iOS**: wrapped with [Capacitor](https://capacitorjs.com) into native projects (see below).
 
+## Documentation
+
+| Guide | What's in it |
+| --- | --- |
+| **[Product guide](docs/FEATURES.md)** | Every feature, who it's for (car, bike, taxi, bus and truck owners and fleets), and plans & pricing |
+| **[Build & scale guide](docs/BUILD-AND-SCALE.md)** | Components and bill of materials, preparing the hardware for heat, vibration and water, manufacturing and certification, servers for 1 → 10,000+ vehicles, the API the app expects, installation, rollout checklists and a **cost-benefit analysis** |
+| **[Hardware reference design](docs/hardware.md)** | Parts, wiring, firmware behaviour and the MQTT data protocol |
+
+The same guides are published as a styled docs site at **`/docs/`** on the deployed app, also linked in-app from *Car → Help & product guide*. `npm run build` generates the site from the Markdown (`npm run docs` on its own).
+
 Out of the box it runs on a **built-in tracker simulator** that generates 6 weeks of driving history around Bengaluru. That includes commutes, weekend trips, rush-hour traffic, harsh braking, a night-time speeding run and one collision. You can explore every screen without hardware.
 
 ## Screens
@@ -24,6 +34,9 @@ Out of the box it runs on a **built-in tracker simulator** that generates 6 week
 | **Incidents & claims** | **Log incident** (Live, Alerts or any trip) → choose what happened (collision, hit & run, theft, vandalism, pothole, road rage, parking damage, other) → *just now* or a moment on an earlier trip → **Seal evidence**. The GPS track from 15 min before to 5 min after is frozen with a SHA-256 fingerprint. Front camera, cabin camera and cabin audio are locked, and nothing sealed can be deleted. The case file then remembers everything the insurer will ask for, saved on the phone as you type: your statement (with prompts), a real **voice statement** from the microphone, photos (camera or gallery, which can't be removed once added), a tap-to-mark **damage map**, other party details, injuries, police FIR, witnesses, repair estimate, and your driver and policy details (pre-filled from Settings). **Prepare claim summary** writes the claim text from the sealed data and your answers, then lets you copy it, share it or download a JSON claim pack. After you mark the case as *sent to insurer* it becomes read-only, with dated notes only. Every action is written to a *record of changes*. The auto-detected collision becomes a case automatically. |
 | **Geofences** | There are three shapes. **Circle**: a radius around a point (straight-line distance). **Drive time**: everywhere the car can reach *by road* in N minutes, with light, normal or rush-hour traffic. It's worked out on the road network (speed limits scaled by traffic, plus signal/turn delays), so a place 2 km away by air can sit outside a 15-minute zone if the drive there is slow. **Draw**: tap the map to add corners, with undo/clear. Each zone can alert on enter, exit or both, and shows its crossings from the last 7 days. On the Live map, drive-time zones are drawn as a light outline. |
 | **Stops & activity** | The vehicle state is shown live on the Live screen ("Running 26s", "Idle 3m", "Stopped"). A **24-hour state bar** (running / idle / stopped) can be tapped for each period, with daily totals and the cost of idling. A map shows numbered stops. The **stop report** lists parked stops (engine off) and long idling (engine on, 3 min+), each with place, arrival, departure and duration. You can filter by type or set the shortest stop listed (2/5/15/30 min), and export to Excel or PDF. A **long-idling alert** fires after N minutes (Settings). |
+| **Route watch** | A **route-deviation alarm**. The planned route is drawn with an allowed corridor (50 m–1 km) and a grace time (5 s–3 min). If the vehicle stays outside it longer than that, a **full-screen alarm** sounds (two-tone siren and vibration) with the distance off route, the time away and the place, plus buttons to call the driver or share the live location. Emergency contacts can be alerted too. A banner on Live shows *On route / Off route*, and every deviation is logged and appears in Alerts. Try **Car → Route watch → Simulate a detour**. |
+| **Plans & billing** | **Personal** (Free, Plus ₹99, Family ₹199 a month) and **Business** per-vehicle plans (Fleet ₹149, Fleet Pro ₹249, Enterprise). A live quote shows vehicle type, fleet size (volume discounts from 50 and 200), monthly or yearly billing (2 months free), hardware bought or rented, free installation from 10 vehicles, and GST. Checkout is a demo Razorpay flow (UPI autopay, card, NACH). Prices and the quote logic are in [`src/lib/plans.js`](src/lib/plans.js). |
+| **Fleet dashboard** | For taxi, auto, bus and truck operators. Counts by state (running, idle, stopped, offline) that double as filters, a live map of every vehicle coloured by state, type filters, and a list with plate, driver, location, speed and km today. A vehicle sheet has call and route-watch actions. **Add vehicle** pairs a tracker by QR or IMEI. The demo fleet has 12 vehicles. |
 | **Stolen-vehicle mode** | Hold to turn on. Tracking switches to every 5 s, a **police link** (no app or login needed) shows live position, speed, plate and IMEI, and contacts get an SMS. The engine is cut **only once the car slows below 20 km/h**. It stays silent (no horn or lights) and keeps a timeline and FIR number. |
 | **Share my ride** | From Live: pick contacts, get a live link with ETA that **stops automatically on arrival**. The viewer page needs no app. |
 | **Drivers & new-driver mode** | Profiles identified by phone Bluetooth, key fob or RFID tag. Every trip has a driver. New-driver mode sets a **speed limit and curfew**, lists each rule break, and sends a **weekly report to the parent**. |
@@ -53,7 +66,7 @@ All of these live in [`src/lib/analytics.js`](src/lib/analytics.js). They work o
 | Top routes | Place → place pairs, with median, best and worst duration. |
 | Safety score | 100 minus event penalties, scaled by distance. |
 
-Unit tests in [`test/analytics.test.js`](test/analytics.test.js) and [`test/features.test.js`](test/features.test.js) and [`test/geofence-stops.test.js`](test/geofence-stops.test.js) cover each rule (37 tests), including tolls, reminders, mileage, logbook tags, night-movement and curfew detection, hotspots and offline question answering. One test checks that the detector finds exactly the events the simulated device recorded.
+Unit tests in [`test/analytics.test.js`](test/analytics.test.js) and [`test/features.test.js`](test/features.test.js) and [`test/geofence-stops.test.js`](test/geofence-stops.test.js) and [`test/route-plans-fleet.test.js`](test/route-plans-fleet.test.js) cover each rule (51 tests), including tolls, reminders, mileage, logbook tags, night-movement and curfew detection, hotspots, offline question answering, route deviations, plan quotes (volume discounts, GST, yearly billing) and the demo fleet. One test checks that the detector finds exactly the events the simulated device recorded.
 
 ## Deploy on Netlify
 
@@ -87,7 +100,7 @@ For production you'd typically add `@capacitor/geolocation` (phone location for 
 
 ## Build your own tracker
 
-See **[docs/hardware.md](docs/hardware.md)**. It covers the parts list with rough ₹ prices, wiring, how offline store-and-forward works, the MQTT/Traccar data protocol, safety (NC immobilizer relay, speed interlock) and Indian rules (AIS-140, DPDP). A starter firmware sketch for an ESP32-S3 + 4G modem is in [`firmware/drive-tracker/`](firmware/drive-tracker/drive-tracker.ino). It is an **untested skeleton** and hasn't been compiled or flashed.
+See **[docs/BUILD-AND-SCALE.md](docs/BUILD-AND-SCALE.md)** for the full path from prototype to thousands of vehicles (components, preparing the hardware, certification, servers per scale, cost-benefit analysis), and **[docs/hardware.md](docs/hardware.md)** for the reference design. The reference design covers the parts list with rough ₹ prices, wiring, how offline store-and-forward works, the MQTT/Traccar data protocol, safety (NC immobilizer relay, speed interlock) and Indian rules (AIS-140, DPDP). A starter firmware sketch for an ESP32-S3 + 4G modem is in [`firmware/drive-tracker/`](firmware/drive-tracker/drive-tracker.ino). It is an **untested skeleton** and hasn't been compiled or flashed.
 
 ## Connect a real tracker
 
@@ -123,11 +136,18 @@ src/
                         Controls, Costs, Incidents (log wizard, claim case), Car (hub),
                         Reminders, FuelLog, Logbook, Stolen, Drivers, WeeklyReport,
                         Hotspots, Achievements, Parking, Ask, ShareViewer, Geofences
-                        (+ editor), Activity (stops & states)
+                        (+ editor), Activity (stops & states), RouteWatch, Plans, Fleet
+  components/RouteAlarm.jsx  full-screen off-route alarm with a Web Audio siren
 netlify/functions/ask.mjs   Claude-backed assistant (questions + statement drafts)
 public/sw.js, manifest      installable offline web app
+docs/FEATURES.md            product guide: features, audiences, plans & pricing
+docs/BUILD-AND-SCALE.md     hardware, servers, integration, rollout, cost-benefit analysis
 docs/hardware.md            build-your-own tracker design
+scripts/build-docs.mjs      renders docs/*.md into the /docs/ site (runs before build)
 firmware/drive-tracker/     ESP32-S3 starter firmware (untested skeleton)
+  lib/route.js          planned-route corridor: distance off route, deviations
+  lib/plans.js          plans, hardware, volume discounts, GST quote
+  data/fleet.js         demo business fleet (taxis, autos, bus, trucks, bikes)
   lib/geofence.js       circle / drive-time (isochrone) / polygon zones + enter/exit events
   lib/stops.js          running / idle / stopped timeline, stop report, live state
   lib/costs.js          trip cost (fuel + FASTag tolls + parking) and grouping
@@ -138,5 +158,5 @@ firmware/drive-tracker/     ESP32-S3 starter firmware (untested skeleton)
   lib/aiClient.js       streaming client for /api/ask
   lib/exporters.js      Excel (write-excel-file) and PDF (jsPDF) exports, lazy-loaded
   lib/evidence.js       SHA-256 sealing, GPS snapshots, photo compression, claim vocab
-test/analytics.test.js, test/features.test.js, test/geofence-stops.test.js
+test/analytics.test.js, test/features.test.js, test/geofence-stops.test.js, test/route-plans-fleet.test.js
 ```

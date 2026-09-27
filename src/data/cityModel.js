@@ -194,3 +194,14 @@ export const tollPlazas = [
 
 // Default parking fees charged at saved places (₹ per visit).
 export const DEFAULT_PARKING_FEES = { mall: 60, airport: 150 };
+
+/** Closest junction to a point. */
+export function nearestNode(pt) {
+  let best = 0;
+  let bd = Infinity;
+  city.nodes.forEach((n, i) => {
+    const d = Math.hypot(n.x - pt.x, n.y - pt.y);
+    if (d < bd) { bd = d; best = i; }
+  });
+  return best;
+}

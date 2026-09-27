@@ -6,6 +6,8 @@
   "description": "Mobile app for wired GPS trackers: live tracking, trips, speed insights, frequent places, crash detection, dashcam & cabin audio vault.",
   "scripts": {
     "dev": "vite --host",
+    "docs": "node scripts/build-docs.mjs",
+    "prebuild": "npm run docs",
     "build": "vite build",
     "preview": "vite preview --host",
     "test": "vitest run",
@@ -28,6 +30,7 @@
   "devDependencies": {
     "@capacitor/cli": "^7.4.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "marked": "^18.0.14",
     "vite": "^7.1.0",
     "vitest": "^3.2.0"
   }
