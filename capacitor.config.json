@@ -1,0 +1,8 @@
+{
+  "appId": "com.drive.intelligence",
+  "appName": "Drive",
+  "webDir": "dist",
+  "backgroundColor": "#0b0d10",
+  "ios": { "contentInset": "never" },
+  "android": { "backgroundColor": "#0b0d10" }
+}
